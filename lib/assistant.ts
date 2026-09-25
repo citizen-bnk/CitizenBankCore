@@ -160,7 +160,10 @@ export async function askAssistant(
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const res = await client.messages.create({
       model: MODEL,
-      max_tokens: 600,
+      // Current models think before answering and that counts toward max_tokens, so leave
+      // headroom; low effort keeps replies quick and cheap. Brevity comes from the prompt.
+      max_tokens: 4000,
+      output_config: { effort: "low" },
       system: systemPrompt(user.firstName, lang),
       tools,
       messages,
