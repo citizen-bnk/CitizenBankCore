@@ -6,7 +6,7 @@
  * On Vercel, missing required settings fail the build. Locally they are warnings,
  * since `npm run build` without a database is fine for checking that the code compiles.
  */
-import { databaseLikeEnvNames, loadEnv } from "./env";
+import { anthropicLikeEnvNames, databaseLikeEnvNames, loadEnv, resolveAnthropicEnv } from "./env";
 
 const dbSource = loadEnv();
 
@@ -56,8 +56,15 @@ if (!process.env.ALLOWED_ORIGINS?.trim()) {
 if (!process.env.CRON_SECRET) {
   warnings.push("CRON_SECRET is not set, so the daily scheduled-payments job will be refused. Add any long random string.");
 }
+const aiSource = resolveAnthropicEnv();
+if (aiSource) console.log(`[preflight] Using ${aiSource} as the Anthropic API key.`);
 if (!process.env.ANTHROPIC_API_KEY) {
-  warnings.push("ANTHROPIC_API_KEY is not set. Citizen AI will fall back to simple keyword matching.");
+  warnings.push(
+    "ANTHROPIC_API_KEY is not set. Citizen AI will fall back to simple keyword matching.\n" +
+      `    Key-like variables this ${process.env.VERCEL_ENV ?? "local"} build can see: ${anthropicLikeEnvNames().join(", ") || "none"}.`,
+  );
+} else if (!process.env.ANTHROPIC_API_KEY.startsWith("sk-ant-")) {
+  warnings.push("ANTHROPIC_API_KEY doesn't start with sk-ant-, so it may not be an Anthropic API key. Check you pasted the whole key.");
 }
 if (onVercel && (process.env.DEMO_PASSWORD ?? "Citizen2026!") === "Citizen2026!" && process.env.SEED_DEMO_DATA !== "false") {
   warnings.push("DEMO_PASSWORD is the published default. Set your own before sharing this deployment.");

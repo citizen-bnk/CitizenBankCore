@@ -10,6 +10,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { resolveAnthropicEnv } from "@/db/env";
 import { getOverview, listTransactions, loanQuote, nearestBranches, spendingInsights, feeFor } from "./banking";
 import { formatMoney } from "./money";
 import { BankError } from "./errors";
@@ -138,6 +139,7 @@ export async function askAssistant(
   userId: string,
   input: { messages: ChatMessage[]; language?: string; image?: { mediaType: string; data: string }; location?: { lat: number; lng: number } },
 ): Promise<AssistantReply> {
+  resolveAnthropicEnv();
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new BankError("AI_OFFLINE", "Citizen AI isn't connected yet. You can still use the quick actions below.", 503);
   }

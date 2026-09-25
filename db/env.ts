@@ -55,3 +55,29 @@ export function databaseLikeEnvNames() {
     .filter((k) => process.env[k] && (/DATABASE|POSTGRES|^PG|NEON|STORAGE/.test(k) || isPostgresUrl(process.env[k])))
     .sort();
 }
+
+/**
+ * Fills ANTHROPIC_API_KEY from a prefixed name (e.g. cdb_ANTHROPIC_API_KEY, as an
+ * integration with a custom prefix creates) or CLAUDE_API_KEY, when exactly one holds
+ * an Anthropic key. Returns the variable it was taken from, if it wasn't set directly.
+ */
+export function resolveAnthropicEnv(): string | undefined {
+  const env = process.env;
+  if (env.ANTHROPIC_API_KEY?.trim()) {
+    env.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY.trim();
+    return undefined;
+  }
+  const hits = Object.keys(env).filter(
+    (k) => /^([A-Za-z0-9]+_ANTHROPIC_API_KEY|CLAUDE_API_KEY|ANTHROPIC_KEY)$/.test(k) && env[k]?.trim().startsWith("sk-ant-"),
+  );
+  if (hits.length !== 1) return undefined;
+  env.ANTHROPIC_API_KEY = env[hits[0]]!.trim();
+  return hits[0];
+}
+
+/** Names (never values) of set variables that look like an Anthropic key, for diagnostics. */
+export function anthropicLikeEnvNames() {
+  return Object.keys(process.env)
+    .filter((k) => process.env[k] && (/ANTHROPIC|CLAUDE/i.test(k) || process.env[k]!.trim().startsWith("sk-ant-")))
+    .sort();
+}
