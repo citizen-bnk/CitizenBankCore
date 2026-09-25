@@ -9,7 +9,12 @@ declare global {
 
 function makePool() {
   const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is not set");
+  if (!url) {
+    throw new Error(
+      "DATABASE_URL is not set. On Vercel: Storage → connect a Neon Postgres database to this project, then redeploy. " +
+        "Locally: copy .env.example to .env and point DATABASE_URL at your Postgres.",
+    );
+  }
   const isLocal = /localhost|127\.0\.0\.1/.test(url);
   return new Pool({
     connectionString: url,

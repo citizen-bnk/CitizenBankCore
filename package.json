@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "db:migrate": "tsx db/migrate.ts",
     "db:seed": "tsx db/seed.ts",
-    "vercel-build": "tsx db/migrate.ts && tsx db/seed.ts && next build",
+    "preflight": "tsx db/preflight.ts",
+    "vercel-build": "tsx db/preflight.ts && tsx db/migrate.ts && tsx db/seed.ts && next build",
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio"
   },

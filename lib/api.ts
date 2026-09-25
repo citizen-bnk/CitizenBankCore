@@ -41,7 +41,18 @@ export async function body<S extends ZodTypeAny>(req: Request, schema: S): Promi
   return schema.parse(json);
 }
 
+/**
+ * Reads the optional Idempotency-Key header. A malformed key is rejected rather than
+ * ignored: ignoring it would silently drop the client's double-payment protection.
+ */
 export function idempotencyKey(req: Request) {
   const k = req.headers.get("idempotency-key");
-  return k && /^[A-Za-z0-9:_-]{8,80}$/.test(k) ? k : undefined;
+  if (k === null) return undefined;
+  if (!/^[A-Za-z0-9:_-]{8,80}$/.test(k)) {
+    throw new BankError(
+      "BAD_IDEMPOTENCY_KEY",
+      "Idempotency-Key must be 8–80 characters of letters, digits, colon, underscore or hyphen.",
+    );
+  }
+  return k;
 }

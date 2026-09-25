@@ -6,7 +6,7 @@
 import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db, schema, type Tx } from "@/db";
 import { BankError, notFound } from "./errors";
-import { outboundTodayCents, postTransaction, systemAccount } from "./ledger";
+import { outboundTodayCents, postTransaction, priorPosting, systemAccount } from "./ledger";
 import { formatMoney, fromCents, toCents } from "./money";
 import { fxRate, SUPPORTED_COUNTRIES_CROSS_BORDER } from "./currency";
 
@@ -160,6 +160,8 @@ export async function internalTransfer(
   assertAmount(p.cents);
   if (p.fromAccountId === p.toAccountId) throw new BankError("SAME_ACCOUNT", "Please choose two different accounts.");
   return db.transaction(async (tx) => {
+    const prior = await priorPosting(tx, p.idempotencyKey, userId, { cents: p.cents, accountIds: [p.fromAccountId, p.toAccountId] });
+    if (prior) return prior;
     const from = await ownedAccount(tx, userId, p.fromAccountId);
     const [to] = await tx.select().from(S.accounts)
       .where(and(eq(S.accounts.id, p.toAccountId), eq(S.accounts.userId, userId))).limit(1);
@@ -184,6 +186,10 @@ export async function payBeneficiary(
 ) {
   assertAmount(p.cents);
   return db.transaction(async (tx) => {
+    const prior = await priorPosting(tx, p.idempotencyKey, userId, {
+      cents: p.cents, accountIds: [p.fromAccountId], metadata: { beneficiaryId: p.beneficiaryId },
+    });
+    if (prior) return prior;
     const from = await ownedAccount(tx, userId, p.fromAccountId);
     const [ben] = await tx.select().from(S.beneficiaries)
       .where(and(eq(S.beneficiaries.id, p.beneficiaryId), eq(S.beneficiaries.userId, userId))).limit(1);
@@ -244,6 +250,10 @@ export async function payBill(
 ) {
   assertAmount(p.cents);
   return db.transaction(async (tx) => {
+    const prior = await priorPosting(tx, p.idempotencyKey, userId, {
+      cents: p.cents, accountIds: [p.fromAccountId], metadata: { billerId: p.billerId },
+    });
+    if (prior) return prior;
     const from = await ownedAccount(tx, userId, p.fromAccountId);
     const [biller] = await tx.select().from(S.billers).where(and(eq(S.billers.id, p.billerId), eq(S.billers.active, true))).limit(1);
     if (!biller) throw notFound("biller");

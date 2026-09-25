@@ -33,14 +33,19 @@ export async function postTransaction(tx: Tx, input: PostInput) {
   if (sum !== 0) throw new Error(`Unbalanced transaction (${sum} cents)`);
   if (input.legs.some((l) => !Number.isInteger(l.cents) || l.cents === 0)) throw new Error("Invalid leg amount");
 
-  // Idempotency: if we've already posted this key, return the original.
+  // Idempotency backstop: if we've already posted this key, return the original.
+  // Payment services call priorPosting() first, which also checks the request matches.
   if (input.idempotencyKey) {
+    await lockKey(tx, input.idempotencyKey);
     const [existing] = await tx
       .select()
       .from(schema.transactions)
       .where(eq(schema.transactions.idempotencyKey, input.idempotencyKey))
       .limit(1);
-    if (existing) return existing;
+    if (existing) {
+      if (existing.initiatedById !== (input.initiatedById ?? null)) throw idempotencyConflict();
+      return existing;
+    }
   }
 
   const ids = [...new Set(input.legs.map((l) => l.accountId))].sort();
@@ -103,6 +108,55 @@ export async function postTransaction(tx: Tx, input: PostInput) {
     await tx.update(schema.accounts).set({ balance: fromCents(bal) }).where(eq(schema.accounts.id, accId));
   }
   return txRow;
+}
+
+/** Serialises concurrent requests carrying the same key until this database transaction ends. */
+async function lockKey(tx: Tx, key: string) {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`);
+}
+
+const idempotencyConflict = () =>
+  new BankError(
+    "IDEMPOTENCY_CONFLICT",
+    "This Idempotency-Key was already used for a different payment. Use a new key for a new payment.",
+    409,
+  );
+
+/**
+ * Idempotent replay for payment services. Call it first inside the payment's database
+ * transaction, before limit checks, notifications or other side effects, so a retry
+ * returns the original result instead of re-running them.
+ *
+ * Returns the transaction this user already posted with `key`, or null if there is none.
+ * A key reused for a different payment, or another customer's key, is a 409, never a replay.
+ */
+export async function priorPosting(
+  tx: Tx,
+  key: string | undefined,
+  userId: string,
+  expect: { cents: number; accountIds: string[]; metadata?: Record<string, unknown> },
+) {
+  if (!key) return null;
+  await lockKey(tx, key);
+  const [existing] = await tx
+    .select()
+    .from(schema.transactions)
+    .where(eq(schema.transactions.idempotencyKey, key))
+    .limit(1);
+  if (!existing) return null;
+
+  const entries = await tx
+    .select({ accountId: schema.ledgerEntries.accountId })
+    .from(schema.ledgerEntries)
+    .where(eq(schema.ledgerEntries.transactionId, existing.id));
+  const touched = new Set(entries.map((e) => e.accountId));
+  const same =
+    existing.initiatedById === userId &&
+    toCents(existing.amount) === expect.cents &&
+    expect.accountIds.every((id) => touched.has(id)) &&
+    Object.entries(expect.metadata ?? {}).every(([k, v]) => existing.metadata?.[k] === v);
+  if (!same) throw idempotencyConflict();
+  return existing;
 }
 
 /** Resolves a bank-owned internal account by system code (created by the seed). */

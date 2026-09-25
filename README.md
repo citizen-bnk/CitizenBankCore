@@ -50,7 +50,9 @@ Both frontends proxy `/api/*` to Core, so the session cookie is always first-par
    | `FX_RATES_JSON` | no | Override indicative FX rates, e.g. `{"USD":0.055}` (units per 1 LSL). |
    | `FEE_LOCAL_TRANSFER_CENTS`, `FEE_INTL_PERCENT`, `FEE_INTL_MIN_CENTS`, `DAILY_TRANSFER_LIMIT_CENTS` | no | Tariff settings. |
 
-4. **Deploy.** Check `https://<core>.vercel.app/api/health`, which should report `{"ok":true,"db":"up"}`.
+4. **Deploy.** The build starts with a preflight check (`db/preflight.ts`). If a required setting is missing, the build
+   stops with a list of what to set and where. Once it's live, check `https://<core>.vercel.app/api/health`, which should
+   report `{"ok":true,"db":"up"}`.
 5. Set `CORE_API_URL` in the two frontend projects to this deployment's URL, then redeploy them.
 
 Demo profiles: `palesa@demo.citizenbank.co.ls` and `thabo@demo.citizenbank.co.ls` (password = `DEMO_PASSWORD`).
@@ -68,8 +70,13 @@ Change the schema in `db/schema.ts`, then run `npm run db:generate` to create a 
 
 ## API overview
 
-All endpoints except `auth/*`, `health` and `branches` need the `cb_session` cookie. Mutating payment endpoints accept an
-`Idempotency-Key` header. Amounts are maloti, as numbers or strings (`"1,250.50"`).
+All endpoints except `auth/*`, `health` and `branches` need the `cb_session` cookie. Amounts are maloti, as numbers or
+strings (`"1,250.50"`).
+
+Payment endpoints (`transfers/internal`, `payments/*`) accept an `Idempotency-Key` header: 8–80 characters of letters,
+digits, `:`, `_` or `-`. Resending a request with the same key returns the original result without paying twice, even
+when the retries arrive at the same time. A malformed key gets `400 BAD_IDEMPOTENCY_KEY`. A key reused for a different
+payment, or by a different customer, gets `409 IDEMPOTENCY_CONFLICT`.
 
 | Method & path | Purpose |
 |---|---|
