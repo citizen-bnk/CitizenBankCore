@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as schema from "./schema";
+import { resolveDatabaseEnv } from "./env";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -8,6 +9,7 @@ declare global {
 }
 
 function makePool() {
+  resolveDatabaseEnv();
   const url = process.env.DATABASE_URL;
   if (!url) {
     throw new Error(

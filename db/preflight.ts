@@ -6,9 +6,9 @@
  * On Vercel, missing required settings fail the build. Locally they are warnings,
  * since `npm run build` without a database is fine for checking that the code compiles.
  */
-import { loadEnv } from "./env";
+import { databaseLikeEnvNames, loadEnv } from "./env";
 
-loadEnv();
+const dbSource = loadEnv();
 
 const onVercel = !!process.env.VERCEL;
 const errors: string[] = [];
@@ -20,10 +20,14 @@ if (!dbUrl) {
     "DATABASE_URL is not set. The app has no database to use.\n" +
       "    Fix: in Vercel open this project → Storage → Create Database → Neon (Postgres),\n" +
       "    connect it to the project for Production and Preview, then redeploy.\n" +
-      "    That sets DATABASE_URL and DATABASE_URL_UNPOOLED for you.",
+      "    That sets DATABASE_URL and DATABASE_URL_UNPOOLED for you.\n" +
+      `    Database-related variables this build can see: ${databaseLikeEnvNames().join(", ") || "none"}.\n` +
+      `    (This is a ${process.env.VERCEL_ENV ?? "local"} build; the database must be connected for that environment.)`,
   );
 } else if (!/^postgres(ql)?:\/\//.test(dbUrl)) {
   errors.push("DATABASE_URL doesn't look like a Postgres URL (it should start with postgresql://).");
+} else if (dbSource) {
+  console.log(`[preflight] Using ${dbSource} as the database URL.`);
 }
 
 const authSecret = process.env.AUTH_SECRET;
