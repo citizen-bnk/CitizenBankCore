@@ -35,12 +35,12 @@ export function resolveDatabaseEnv(): string | undefined {
 
   let source: string | undefined;
   if (!env.DATABASE_URL) {
-    source = pick("POSTGRES_URL", [/^[A-Z0-9]+_URL$/, /^[A-Z0-9]+_DATABASE_URL$/, /^[A-Z0-9]+_POSTGRES_URL$/]);
+    source = pick("POSTGRES_URL", [/^[A-Za-z0-9]+_URL$/, /^[A-Za-z0-9]+_DATABASE_URL$/, /^[A-Za-z0-9]+_POSTGRES_URL$/]);
     if (source) env.DATABASE_URL = env[source];
   }
   if (!env.DATABASE_URL_UNPOOLED) {
     const un = pick("POSTGRES_URL_NON_POOLING", [
-      /^[A-Z0-9]+_URL_UNPOOLED$/, /^[A-Z0-9]+_DATABASE_URL_UNPOOLED$/, /^[A-Z0-9]+_POSTGRES_URL_NON_POOLING$/,
+      /^[A-Za-z0-9]+_URL_UNPOOLED$/, /^[A-Za-z0-9]+_DATABASE_URL_UNPOOLED$/, /^[A-Za-z0-9]+_POSTGRES_URL_NON_POOLING$/,
     ]);
     if (un) env.DATABASE_URL_UNPOOLED = env[un];
   }
