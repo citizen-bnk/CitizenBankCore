@@ -17,6 +17,27 @@ The backend for the Citizen Bank **mobile app** ([CitizenBankApp](https://github
 
 ## Architecture
 
+Conversation uses Anthropic first and automatically falls back to OpenAI's Responses API when Anthropic
+is unconfigured, unreachable, rejects its credentials, rate limits a request, or returns unusable output.
+Both providers use the same read-only banking tools. Payment and card requests return proposals that
+the customer must review and confirm; neither provider can post transactions.
+
+Speech uses ElevenLabs first and OpenAI speech second. If neither server provider works, the updated
+frontends use browser speech. Replies identify the conversation provider; audio responses identify the
+voice provider in `X-Voice-Provider`. Provider failures are logged without credentials or customer content.
+
+Configure `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` in Production and Preview. Optional model settings are
+`ANTHROPIC_MODEL` (default `claude-sonnet-5`) and `OPENAI_MODEL` (default `gpt-5.4-mini`). Configure
+`ELEVENLABS_API_KEY` and voice IDs `ELEVENLABS_VOICE_EN`, `_ST`, `_ZU` for primary speech. OpenAI defaults
+to `OPENAI_TTS_MODEL=gpt-4o-mini-tts` and `OPENAI_TTS_VOICE=coral`. All keys remain on Core.
+
+`/api/health` reports database health and provider configuration flags. Those flags indicate the presence
+of configuration, not successful provider authentication. Verify connections with authenticated
+`/api/assistant` and `/api/tts` requests after redeploying environment changes.
+
+Run `npm test`, `npm run typecheck`, and `npm run build` before pushing. Provider tests exercise primary
+success, failover, read-only tool loops, payment proposals, refusal handling, unavailable services and voice fallback.
+
 ```
  Phone ───> CitizenBankApp (Vercel) ────┐   /api/* rewrite (same-origin cookies)
  Browser ─> CitizenInternetBanking ─────┤
