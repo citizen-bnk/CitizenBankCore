@@ -44,6 +44,10 @@ export const authSessions=pgTable('auth_sessions',{
 export const authRateLimits=pgTable('auth_rate_limits',{
   id:text('id').primaryKey(), count:integer('count').notNull().default(1), expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
 });
+export const adminInvites=pgTable('admin_invites',{
+  id:text('id').primaryKey(),tokenHash:text('token_hash').notNull().unique(),userId:text('user_id').notNull().references(()=>users.id),
+  expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),consumedAt:timestamp('consumed_at',{withTimezone:true}),
+});
 
 export const roleEnum = pgEnum("role", ["CUSTOMER", "BOARD_MEMBER", "BACK_OFFICE", "SUPER_ADMIN"]);
 export const accountTypeEnum = pgEnum("account_type", ["CURRENT", "SAVINGS", "FIXED_DEPOSIT", "INTERNAL"]);

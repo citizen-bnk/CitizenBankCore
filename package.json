@@ -12,7 +12,7 @@
     "db:migrate": "tsx db/migrate.ts",
     "db:seed": "tsx db/seed.ts",
     "preflight": "tsx db/preflight.ts",
-    "vercel-build": "tsx db/preflight.ts && tsx db/migrate.ts && tsx db/seed.ts && next build",
+    "vercel-build": "tsx db/preflight.ts && tsx db/migrate.ts && tsx db/seed.ts && tsx db/admin-bootstrap.ts && next build",
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio",
     "test:integration": "tsx --test tests/integration/*.test.ts"

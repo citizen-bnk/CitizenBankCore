@@ -15,6 +15,13 @@
       "when": 1791192000000,
       "tag": "0001_progressive_kyc",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791205400000,
+      "tag": "0002_admin_bootstrap",
+      "breakpoints": true
     }
   ]
 }
