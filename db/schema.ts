@@ -15,6 +15,36 @@ const id = () => text("id").primaryKey().$defaultFn(createId);
 const money = (name: string) => numeric(name, { precision: 18, scale: 2 });
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
+export const kycProfiles = pgTable('kyc_profiles', {
+  userId: text('user_id').primaryKey().references(()=>users.id),
+  declared: jsonb('declared').$type<Record<string,string>>().notNull().default({}),
+  verified: jsonb('verified').$type<import('../lib/kyc-policy').Evidence[]>().notNull().default([]),
+  status: text('status').notNull().default('not_started'),
+  validUntil: timestamp('valid_until',{withTimezone:true}),
+  updatedAt: timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+});
+export const kycEvents = pgTable('kyc_events', {
+  id: id(), userId: text('user_id').notNull().references(()=>users.id), actorId: text('actor_id').notNull().references(()=>users.id),
+  event: text('event').notNull(), details: jsonb('details').$type<Record<string,unknown>>().notNull(), createdAt: createdAt(),
+});
+export const passkeys = pgTable('passkeys', {
+  id: text('id').primaryKey(), userId:text('user_id').notNull().references(()=>users.id),
+  publicKey:text('public_key').notNull(), counter:integer('counter').notNull(), rpId:text('rp_id').notNull(), createdAt:createdAt(),
+});
+export const authChallenges=pgTable('auth_challenges',{
+  id:id(), challenge:text('challenge').notNull(), purpose:text('purpose').notNull(), userId:text('user_id').references(()=>users.id),
+  origin:text('origin').notNull(), expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
+});
+export const authSessions=pgTable('auth_sessions',{
+  id:id(), userId:text('user_id').notNull().references(()=>users.id),
+  authenticatedAt:timestamp('authenticated_at',{withTimezone:true}).notNull().defaultNow(),
+  lastSeenAt:timestamp('last_seen_at',{withTimezone:true}).notNull().defaultNow(),
+  expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
+});
+export const authRateLimits=pgTable('auth_rate_limits',{
+  id:text('id').primaryKey(), count:integer('count').notNull().default(1), expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
+});
+
 export const roleEnum = pgEnum("role", ["CUSTOMER", "BOARD_MEMBER", "BACK_OFFICE", "SUPER_ADMIN"]);
 export const accountTypeEnum = pgEnum("account_type", ["CURRENT", "SAVINGS", "FIXED_DEPOSIT", "INTERNAL"]);
 export const accountStatusEnum = pgEnum("account_status", ["ACTIVE", "DORMANT", "CLOSED"]);

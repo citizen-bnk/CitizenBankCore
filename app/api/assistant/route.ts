@@ -11,6 +11,7 @@ const schemaIn = z.object({
   location: z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) }).optional(),
 });
 
+import { rateLimit } from '@/lib/rate-limit';
 /* Simple per-instance throttle (30 requests / 5 min / user). Use Upstash/Redis for a global limit. */
 const hits = new Map<string, number[]>();
 function throttled(userId: string) {
@@ -22,6 +23,7 @@ function throttled(userId: string) {
 }
 
 export const POST = authed(async (req, s) => {
+  await rateLimit(req,'assistant',30,300_000,s.userId);
   if (throttled(s.userId)) return Response.json({ error: "You're going a bit fast for me — give it a moment and try again." }, { status: 429 });
   return askAssistant(s.userId, await body(req, schemaIn));
 });

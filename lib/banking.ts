@@ -10,6 +10,7 @@ import { outboundTodayCents, postTransaction, priorPosting, systemAccount } from
 import { formatMoney, fromCents, toCents } from "./money";
 import { fxRate, SUPPORTED_COUNTRIES_CROSS_BORDER } from "./currency";
 
+import { requireKyc } from './kyc';
 const S = schema;
 
 /* ------------------------------------------------------------------ config */
@@ -163,6 +164,7 @@ export async function internalTransfer(
     const prior = await priorPosting(tx, p.idempotencyKey, userId, { cents: p.cents, accountIds: [p.fromAccountId, p.toAccountId] });
     if (prior) return prior;
     const from = await ownedAccount(tx, userId, p.fromAccountId);
+    await requireKyc(userId, 'internal_transfer', p.cents, tx);
     const [to] = await tx.select().from(S.accounts)
       .where(and(eq(S.accounts.id, p.toAccountId), eq(S.accounts.userId, userId))).limit(1);
     if (!to) throw notFound("account");
@@ -194,6 +196,7 @@ export async function payBeneficiary(
     const [ben] = await tx.select().from(S.beneficiaries)
       .where(and(eq(S.beneficiaries.id, p.beneficiaryId), eq(S.beneficiaries.userId, userId))).limit(1);
     if (!ben) throw notFound("beneficiary");
+    await requireKyc(userId, ben.type === 'INTERNATIONAL' ? 'cross_border' : 'payment', p.cents, tx);
     await enforceDailyLimit(tx, userId, p.cents);
 
     const fee = feeFor(ben.type, p.cents);
@@ -257,6 +260,7 @@ export async function payBill(
     const from = await ownedAccount(tx, userId, p.fromAccountId);
     const [biller] = await tx.select().from(S.billers).where(and(eq(S.billers.id, p.billerId), eq(S.billers.active, true))).limit(1);
     if (!biller) throw notFound("biller");
+    await requireKyc(userId, 'payment', p.cents, tx);
     await enforceDailyLimit(tx, userId, p.cents);
     const kind = p.kind ?? (biller.isAirtime ? "AIRTIME" : "BILL_PAYMENT");
     const ref = p.customerRef?.slice(0, 40);
@@ -282,6 +286,7 @@ export async function addBeneficiary(
   userId: string,
   p: { name: string; bankName: string; accountNumber: string; country?: string; swift?: string; branchCode?: string },
 ) {
+  await requireKyc(userId, p.country && p.country.toUpperCase() !== 'LS' ? 'cross_border' : 'beneficiary');
   const name = p.name.trim();
   const accountNumber = p.accountNumber.replace(/\s/g, "");
   if (name.length < 2) throw new BankError("BAD_NAME", "Please enter the beneficiary's full name.");
@@ -323,6 +328,7 @@ async function ownedCard(userId: string, cardId: string) {
 export async function setCardStatus(userId: string, cardId: string, action: "freeze" | "unfreeze" | "block") {
   const card = await ownedCard(userId, cardId);
   if (card.status === "BLOCKED") throw new BankError("CARD_BLOCKED", "This card is permanently blocked. Please order a replacement.");
+  if (action === 'unfreeze') await requireKyc(userId, 'card');
   const status = action === "freeze" ? "FROZEN" : action === "block" ? "BLOCKED" : "ACTIVE";
   const [row] = await db.update(S.cards).set({ status }).where(eq(S.cards.id, card.id)).returning();
   return row;
@@ -336,6 +342,7 @@ export async function setCardLimits(userId: string, cardId: string, p: { dailyCe
     if (!Number.isInteger(v) || v <= 0) throw new BankError("BAD_LIMIT", "Please enter a limit greater than zero.");
     if (v > MAX_CARD_LIMIT_CENTS) throw new BankError("BAD_LIMIT", `The highest limit I can set here is ${formatMoney(fromCents(MAX_CARD_LIMIT_CENTS))}.`);
   }
+  if (daily > toCents(card.dailyLimit) || monthly > toCents(card.monthlyLimit)) await requireKyc(userId,'card');
   if (daily > monthly) throw new BankError("BAD_LIMIT", "The daily limit can't be higher than the monthly limit.");
   const [row] = await db.update(S.cards).set({ dailyLimit: fromCents(daily), monthlyLimit: fromCents(monthly) }).where(eq(S.cards.id, card.id)).returning();
   return row;
@@ -345,6 +352,7 @@ export async function orderCard(
   userId: string,
   p: { kind: "DEBIT" | "CRYPTO"; accountId?: string; form: "VIRTUAL" | "PHYSICAL"; deliveryAddress?: string; replacesCardId?: string },
 ) {
+  await requireKyc(userId, 'card');
   if (p.form === "PHYSICAL" && (!p.deliveryAddress || p.deliveryAddress.trim().length < 8)) {
     throw new BankError("BAD_ADDRESS", "Please give a full delivery address for the physical card.");
   }
@@ -395,12 +403,14 @@ export async function createScheduled(
   p: { fromAccountId: string; beneficiaryId?: string; billerId?: string; cents: number; frequency: "ONCE" | "WEEKLY" | "MONTHLY" | "QUARTERLY"; startDate: Date; reference?: string },
 ) {
   assertAmount(p.cents);
+  await requireKyc(userId,'schedule',p.cents);
   await ownedAccount(db, userId, p.fromAccountId);
   if (!!p.beneficiaryId === !!p.billerId) throw new BankError("BAD_SCHEDULE", "Choose either a beneficiary or a biller.");
   let description: string;
   if (p.beneficiaryId) {
     const [b] = await db.select().from(S.beneficiaries).where(and(eq(S.beneficiaries.id, p.beneficiaryId), eq(S.beneficiaries.userId, userId))).limit(1);
     if (!b) throw notFound("beneficiary");
+    await requireKyc(userId,b.type === 'INTERNATIONAL' ? 'cross_border' : 'schedule',p.cents);
     description = `Payment to ${b.name}`;
   } else {
     const [b] = await db.select().from(S.billers).where(eq(S.billers.id, p.billerId!)).limit(1);
