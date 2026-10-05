@@ -7,6 +7,7 @@
  * since `npm run build` without a database is fine for checking that the code compiles.
  */
 import { anthropicLikeEnvNames, databaseLikeEnvNames, loadEnv, resolveAnthropicEnv } from "./env";
+import { resolveAIConfig } from "../lib/ai-config";
 
 const dbSource = loadEnv();
 
@@ -57,15 +58,19 @@ if (!process.env.CRON_SECRET) {
   warnings.push("CRON_SECRET is not set, so the daily scheduled-payments job will be refused. Add any long random string.");
 }
 const aiSource = resolveAnthropicEnv();
+const aiConfig = resolveAIConfig();
 if (aiSource) console.log(`[preflight] Using ${aiSource} as the Anthropic API key.`);
 if (!process.env.ANTHROPIC_API_KEY) {
   warnings.push(
-    "ANTHROPIC_API_KEY is not set. Citizen AI will fall back to simple keyword matching.\n" +
+    "ANTHROPIC_API_KEY is not set. Citizen AI will use OpenAI if configured, otherwise the frontends use simple keyword matching.\n" +
       `    Key-like variables this ${process.env.VERCEL_ENV ?? "local"} build can see: ${anthropicLikeEnvNames().join(", ") || "none"}.`,
   );
 } else if (!process.env.ANTHROPIC_API_KEY.startsWith("sk-ant-")) {
   warnings.push("ANTHROPIC_API_KEY doesn't start with sk-ant-, so it may not be an Anthropic API key. Check you pasted the whole key.");
 }
+if (!aiConfig.anthropic && !aiConfig.openai) warnings.push("Neither conversation provider is configured. Set ANTHROPIC_API_KEY and OPENAI_API_KEY for resilient conversational banking.");
+if (!aiConfig.openai) warnings.push("OPENAI_API_KEY is not set. OpenAI conversation and voice backups are unavailable.");
+if (!aiConfig.elevenlabs || !aiConfig.voices.en) warnings.push("ElevenLabs primary voice is not fully configured. OpenAI speech or the browser voice will be used.");
 if (onVercel && (process.env.DEMO_PASSWORD ?? "Citizen2026!") === "Citizen2026!" && process.env.SEED_DEMO_DATA !== "false") {
   warnings.push("DEMO_PASSWORD is the published default. Set your own before sharing this deployment.");
 }
