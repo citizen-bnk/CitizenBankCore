@@ -29,6 +29,8 @@ function luhn(s: string) {
 
 export async function openCustomer(input: {
   firstName: string; lastName: string; email: string; phone?: string; password: string; openingDepositCents?: number; limited?: boolean;
+  /** Set when the profile is created for a platform person (single sign-on). */
+  personId?: string;
 }) {
   const [dup] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, input.email)).limit(1);
   if (dup) throw new BankError("EMAIL_TAKEN", "An account with this email already exists. Try signing in instead.", 409);
@@ -37,6 +39,7 @@ export async function openCustomer(input: {
   return db.transaction(async (tx) => {
     const [user] = await tx.insert(schema.users).values({
       email: input.email, passwordHash, firstName: input.firstName, lastName: input.lastName, phone: input.phone ?? null,
+      personId: input.personId ?? null,
     }).returning();
 
     if (input.limited) return user;

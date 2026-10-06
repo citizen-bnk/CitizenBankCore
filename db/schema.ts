@@ -81,12 +81,21 @@ export const users = pgTable("users", {
   roles: roleEnum("roles").array().notNull().default(["CUSTOMER"]),
   preferredLanguage: varchar("preferred_language", { length: 5 }).notNull().default("en"),
   preferredTheme: varchar("preferred_theme", { length: 10 }).notNull().default("dark"),
+  /** Platform person this user was provisioned for through single sign-on (null for password-only users). */
+  personId: varchar("person_id", { length: 64 }).unique(),
   suspended: boolean("suspended").notNull().default(false),
   failedLogins: integer("failed_logins").notNull().default(0),
   lockedUntil: timestamp("locked_until", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: createdAt(),
 });
+
+/** Handoff tokens already redeemed. A token is valid once; rows can be purged after expires_at. */
+export const ssoTokensUsed = pgTable("sso_tokens_used", {
+  jti: varchar("jti", { length: 100 }).primaryKey(),
+  usedAt: timestamp("used_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+}, (t) => [index("sso_tokens_used_expires_idx").on(t.expiresAt)]);
 
 export const accounts = pgTable("accounts", {
   id: id(),
