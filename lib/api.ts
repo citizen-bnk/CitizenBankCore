@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError, type ZodTypeAny, type z } from "zod";
 import { getSession, type Session } from "./auth";
 import { BankError } from "./errors";
+import { KycRequired } from './kyc';
 
 type Ctx<P> = { params: Promise<P> };
 
@@ -13,6 +14,15 @@ export function authed<P = Record<string, string>>(
     const session = await getSession();
     if (!session) return NextResponse.json({ error: "Please sign in again.", code: "UNAUTHENTICATED" }, { status: 401 });
     try {
+      const path=new URL(req.url).pathname;
+      if(req.method!=='GET') {
+        const { assertOrigin }=await import('./passkey-auth');
+        assertOrigin(req);
+        let critical=/^\/api\/(payments|transfers|scheduled|accounts\/open|cards)(\/|$)/.test(path);
+        if(path.endsWith('/status')) {const action=(await req.clone().json().catch(()=>({}))).action;if(['freeze','block'].includes(action)) critical=false;}
+        if(req.method==='DELETE') critical=false;
+        if(critical && Date.now()/1000-(session.authenticatedAt ?? 0)>300) throw new BankError('REAUTH_REQUIRED','Unlock securely again before confirming this activity.',403);
+      }
       const out = await handler(req, session, ctx);
       return out instanceof Response ? out : NextResponse.json(out ?? { ok: true });
     } catch (e) {
@@ -22,6 +32,7 @@ export function authed<P = Record<string, string>>(
 }
 
 export function errorResponse(e: unknown) {
+  if (e instanceof KycRequired) return NextResponse.json({ error:e.message,code:e.code,kyc:e.assessment },{status:e.status});
   if (e instanceof BankError) return NextResponse.json({ error: e.message, code: e.code }, { status: e.status });
   if (e instanceof ZodError) {
     const first = e.issues[0];

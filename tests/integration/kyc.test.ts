@@ -1,0 +1,28 @@
+import {test,after} from 'node:test';
+import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
+import { eq,sql } from 'drizzle-orm';
+import {db,schema} from '../../db';
+import {submitKyc,requireKyc,kycState} from '../../lib/kyc';
+import {internalTransfer,createScheduled,addBeneficiary,setCardStatus} from '../../lib/banking';
+const id=`integration-${randomBytes(6).toString('hex')}`;
+test('real service calls block missing/expired evidence, and submissions cannot verify themselves',async()=>{
+ process.env.DEMO_MODE='true';
+ await db.insert(schema.users).values({id,email:`${id}@test.invalid`,passwordHash:'unused',firstName:'Test',lastName:'Only'});
+ await assert.rejects(()=>requireKyc(id,'open_account'),(e:any)=>e.code==='KYC_REQUIRED');
+ await submitKyc(id,{legalName:'Test Only',email:'test@example.invalid',dateOfBirth:'1990-01-01',nationality:'Test'});
+ assert.deepEqual((await kycState(id))?.verified,[]);
+ await assert.rejects(()=>requireKyc(id,'payment',1),(e:any)=>e.code==='KYC_REQUIRED');
+ await assert.rejects(()=>addBeneficiary(id,{name:'Test Recipient',bankName:'Other Bank',accountNumber:'12345678'}),(e:any)=>e.code==='KYC_REQUIRED');
+ await assert.rejects(()=>createScheduled(id,{fromAccountId:'unused',cents:1,frequency:'ONCE',startDate:new Date(),billerId:'unused'}),(e:any)=>e.code==='KYC_REQUIRED');
+ await db.update(schema.kycProfiles).set({verified:['contact','identity'],validUntil:new Date(Date.now()+60_000)}).where(eq(schema.kycProfiles.userId,id));
+ await requireKyc(id,'payment',99_999);
+ await assert.rejects(()=>requireKyc(id,'payment',100_000),(e:any)=>e.assessment.missing.includes('source_of_funds'));
+ await submitKyc(id,{email:'changed@example.invalid'});
+ assert.deepEqual((await kycState(id))?.verified,['identity']);
+ await db.update(schema.kycProfiles).set({verified:['contact','identity'],validUntil:new Date(Date.now()-1)}).where(eq(schema.kycProfiles.userId,id));
+ await assert.rejects(()=>requireKyc(id,'payment',1),(e:any)=>e.code==='KYC_REQUIRED');
+ process.env.DEMO_MODE='false';
+ await assert.rejects(()=>requireKyc(id,'payment',1),(e:any)=>e.code==='POLICY_NOT_APPROVED');
+});
+after(async()=>{await db.delete(schema.kycEvents).where(eq(schema.kycEvents.userId,id));await db.delete(schema.kycProfiles).where(eq(schema.kycProfiles.userId,id));await db.delete(schema.users).where(eq(schema.users.id,id));await db.execute(sql`SELECT 1`);await (globalThis as any).__cbPool?.end();});

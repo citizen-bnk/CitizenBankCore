@@ -5,6 +5,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
+import { applyMissing } from "./catch-up";
 import { loadEnv } from "./env";
 
 loadEnv();
@@ -21,6 +22,8 @@ async function main() {
     ssl: /localhost|127\.0\.0\.1/.test(url) ? undefined : { rejectUnauthorized: true },
   });
   await migrate(drizzle(pool), { migrationsFolder: "./drizzle" });
+  const caughtUp = await applyMissing(pool, "./drizzle");
+  if (caughtUp.length) console.log(`[migrate] Applied ${caughtUp.length} migration(s) that were older than the newest applied one.`);
   await pool.end();
   console.log("[migrate] Database is up to date.");
 }

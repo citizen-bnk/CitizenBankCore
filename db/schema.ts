@@ -15,6 +15,40 @@ const id = () => text("id").primaryKey().$defaultFn(createId);
 const money = (name: string) => numeric(name, { precision: 18, scale: 2 });
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
+export const kycProfiles = pgTable('kyc_profiles', {
+  userId: text('user_id').primaryKey().references(()=>users.id),
+  declared: jsonb('declared').$type<Record<string,string>>().notNull().default({}),
+  verified: jsonb('verified').$type<import('../lib/kyc-policy').Evidence[]>().notNull().default([]),
+  status: text('status').notNull().default('not_started'),
+  validUntil: timestamp('valid_until',{withTimezone:true}),
+  updatedAt: timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+});
+export const kycEvents = pgTable('kyc_events', {
+  id: id(), userId: text('user_id').notNull().references(()=>users.id), actorId: text('actor_id').notNull().references(()=>users.id),
+  event: text('event').notNull(), details: jsonb('details').$type<Record<string,unknown>>().notNull(), createdAt: createdAt(),
+});
+export const passkeys = pgTable('passkeys', {
+  id: text('id').primaryKey(), userId:text('user_id').notNull().references(()=>users.id),
+  publicKey:text('public_key').notNull(), counter:integer('counter').notNull(), rpId:text('rp_id').notNull(), createdAt:createdAt(),
+});
+export const authChallenges=pgTable('auth_challenges',{
+  id:id(), challenge:text('challenge').notNull(), purpose:text('purpose').notNull(), userId:text('user_id').references(()=>users.id),
+  origin:text('origin').notNull(), expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
+});
+export const authSessions=pgTable('auth_sessions',{
+  id:id(), userId:text('user_id').notNull().references(()=>users.id),
+  authenticatedAt:timestamp('authenticated_at',{withTimezone:true}).notNull().defaultNow(),
+  lastSeenAt:timestamp('last_seen_at',{withTimezone:true}).notNull().defaultNow(),
+  expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
+});
+export const authRateLimits=pgTable('auth_rate_limits',{
+  id:text('id').primaryKey(), count:integer('count').notNull().default(1), expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
+});
+export const adminInvites=pgTable('admin_invites',{
+  id:text('id').primaryKey(),tokenHash:text('token_hash').notNull().unique(),userId:text('user_id').notNull().references(()=>users.id),
+  expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),consumedAt:timestamp('consumed_at',{withTimezone:true}),
+});
+
 export const roleEnum = pgEnum("role", ["CUSTOMER", "BOARD_MEMBER", "BACK_OFFICE", "SUPER_ADMIN"]);
 export const accountTypeEnum = pgEnum("account_type", ["CURRENT", "SAVINGS", "FIXED_DEPOSIT", "INTERNAL"]);
 export const accountStatusEnum = pgEnum("account_status", ["ACTIVE", "DORMANT", "CLOSED"]);
@@ -47,12 +81,21 @@ export const users = pgTable("users", {
   roles: roleEnum("roles").array().notNull().default(["CUSTOMER"]),
   preferredLanguage: varchar("preferred_language", { length: 5 }).notNull().default("en"),
   preferredTheme: varchar("preferred_theme", { length: 10 }).notNull().default("dark"),
+  /** Platform person this user was provisioned for through single sign-on (null for password-only users). */
+  personId: varchar("person_id", { length: 64 }).unique(),
   suspended: boolean("suspended").notNull().default(false),
   failedLogins: integer("failed_logins").notNull().default(0),
   lockedUntil: timestamp("locked_until", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: createdAt(),
 });
+
+/** Handoff tokens already redeemed. A token is valid once; rows can be purged after expires_at. */
+export const ssoTokensUsed = pgTable("sso_tokens_used", {
+  jti: varchar("jti", { length: 100 }).primaryKey(),
+  usedAt: timestamp("used_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+}, (t) => [index("sso_tokens_used_expires_idx").on(t.expiresAt)]);
 
 export const accounts = pgTable("accounts", {
   id: id(),
