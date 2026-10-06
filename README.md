@@ -48,6 +48,19 @@ success, failover, read-only tool loops, payment proposals, refusal handling, un
 
 Both frontends proxy `/api/*` to Core, so the session cookie is always first-party and CORS isn't needed.
 
+## Single sign-on from the website
+
+People sign in on the Citizen Bank website and are handed to the banking apps with a short-lived signed token.
+`POST /api/auth/sso {code}` verifies the token with the website's public keys (`PLATFORM_JWKS_URL`, issuer
+`PLATFORM_ISSUER`), accepts each token once, creates the demo customer on a person's first visit (linked by
+`users.person_id`, never by email) and starts the usual session cookie. It is switched off until both variables
+are set, and in production the key URL must be https.
+
+SSO users get the `CUSTOMER` role only, whatever roles the website lists, and a profile that exists with the same
+email but is not linked is refused rather than adopted. In demo mode (`DEMO_MODE=true`) a new profile gets the same
+demo deposit as registration. Run `npm test` for the tests; the database tests need `DATABASE_URL` on a migrated and
+seeded database and skip themselves otherwise.
+
 ## Deploy on Vercel
 
 1. **Import this repo** in Vercel (Add New → Project). Vercel detects Next.js, and `vercel.json` sets the build command to

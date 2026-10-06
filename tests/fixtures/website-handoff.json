@@ -1,0 +1,20 @@
+{
+  "note": "Produced by backend/app/libs/platform_tokens.py in CitizenHub with a throwaway key at a fixed time. Verifying it proves the website's signer and Core's verifier agree. Contains no secret.",
+  "issuer": "https://demo-site.example.test",
+  "audience": "banking",
+  "issuedAt": 1800000000,
+  "jwks": {
+    "keys": [
+      {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "30Ts1ZuBkZR28e2Dj4FNL2YW82bxiipGw3cARL6Oa5o",
+        "y": "j3Cl2cyV1qDCZfheT7jVxs7s-oST3dbHLoEKpIccewU",
+        "kid": "XgH2NHb9G8-nSYGRGhai36LoLM3IQBaRp-7WMxWn6h4",
+        "use": "sig",
+        "alg": "ES256"
+      }
+    ]
+  },
+  "token": "eyJhbGciOiJFUzI1NiIsImtpZCI6IlhnSDJOSGI5RzgtblNZR1JHaGFpMzZMb0xNM0lRQmFScC03V014V242aDQiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2RlbW8tc2l0ZS5leGFtcGxlLnRlc3QiLCJhdWQiOiJiYW5raW5nIiwic3ViIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwianRpIjoiNmNkMDkzYjg5MjUwNDA2YTk0Nzg0Y2M1MzFkZDNiMWUiLCJpYXQiOjE4MDAwMDAwMDAsIm5iZiI6MTgwMDAwMDAwMCwiZXhwIjoxODAwMDAwMDYwLCJ1c2UiOiJoYW5kb2ZmIiwicm9sZXMiOlsiY3VzdG9tZXIiLCJpbnZlc3RvciJdLCJuYW1lIjoiUGFsZXNhIERlbW8iLCJlbWFpbCI6IlBhbGVzYUBEZW1vLlRlc3QifQ.4rnrmrUrvK5x10w-HCYCzuPBnZUKh5A_OQsMGAhYnmQj2N5mZ3NuAIF15ZWsF6VP8V3Mutx0NmzYQY3KBdXp_A"
+}

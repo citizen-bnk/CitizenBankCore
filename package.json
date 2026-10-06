@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "tsx tests/providers.test.ts",
+    "test": "tsx tests/providers.test.ts && tsx tests/sso.test.ts && tsx tests/sso.db.test.ts",
     "db:migrate": "tsx db/migrate.ts",
     "db:seed": "tsx db/seed.ts",
     "preflight": "tsx db/preflight.ts",
