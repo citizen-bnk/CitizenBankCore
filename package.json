@@ -14,7 +14,8 @@
     "preflight": "tsx db/preflight.ts",
     "vercel-build": "tsx db/preflight.ts && tsx db/migrate.ts && tsx db/seed.ts && next build",
     "db:generate": "drizzle-kit generate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:website:migrate": "tsx db/website/migrate.ts"
   },
   "engines": {
     "node": ">=20"
