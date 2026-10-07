@@ -135,7 +135,8 @@ export async function userForHandoff(claims: HandoffClaims, opts: { demo: boolea
     }
   }
   if (user.suspended) throw new BankError("SUSPENDED", "This profile is suspended. Please contact support.", 403);
-  await db.update(schema.users).set({ lastLoginAt: new Date(), failedLogins: 0, lockedUntil: null })
+  const refreshedName = splitName(claims.name, claims.email);
+  await db.update(schema.users).set({ ...refreshedName, lastLoginAt: new Date(), failedLogins: 0, lockedUntil: null })
     .where(eq(schema.users.id, user.id));
-  return user;
+  return { ...user, ...refreshedName };
 }
