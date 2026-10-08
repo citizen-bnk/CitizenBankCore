@@ -55,6 +55,22 @@ test("a token signed by the website's Python signer verifies in Core (cross-lang
 test("a valid token is accepted and its claims are normalised", async () => {
   const c = await verifyHandoff(await sign(), cfg, publicKey, at(5));
   assert.deepEqual([c.personId, c.jti, c.email, c.name, c.roles], ["person-1", "jti-1", "demo@example.test", "Demo Customer", ["customer"]]);
+  assert.equal(c.scope, "live");
+});
+
+test("only a verified signed scope selects demo, and disabling it rejects old handoffs", async () => {
+  const previous = process.env.DEMO_MODE;
+  try {
+    process.env.DEMO_MODE = "true";
+    const token = await sign({ data_scope: "demo" });
+    assert.equal((await verifyHandoff(token, cfg, publicKey, at(5))).scope, "demo");
+    await rejects(verifyHandoff(await sign({ data_scope: "unknown" }), cfg, publicKey, at(5)));
+    process.env.DEMO_MODE = "false";
+    await rejects(verifyHandoff(token, cfg, publicKey, at(5)));
+    assert.equal((await verifyHandoff(await sign({ data_scope: "live" }), cfg, publicKey, at(5))).scope, "live");
+  } finally {
+    if (previous === undefined) delete process.env.DEMO_MODE; else process.env.DEMO_MODE = previous;
+  }
 });
 
 test("expired, premature, wrong audience and wrong issuer are refused", async () => {

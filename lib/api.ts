@@ -3,6 +3,7 @@ import { ZodError, type ZodTypeAny, type z } from "zod";
 import { getSession, type Session } from "./auth";
 import { BankError } from "./errors";
 import { KycRequired } from './kyc';
+import { withDataScope } from "./execution-context";
 
 type Ctx<P> = { params: Promise<P> };
 
@@ -14,6 +15,7 @@ export function authed<P = Record<string, string>>(
     const session = await getSession();
     if (!session) return NextResponse.json({ error: "Please sign in again.", code: "UNAUTHENTICATED" }, { status: 401 });
     try {
+      return await withDataScope(session.scope ?? "live", async () => {
       const path=new URL(req.url).pathname;
       if(req.method!=='GET') {
         const { assertOrigin }=await import('./passkey-auth');
@@ -25,6 +27,7 @@ export function authed<P = Record<string, string>>(
       }
       const out = await handler(req, session, ctx);
       return out instanceof Response ? out : NextResponse.json(out ?? { ok: true });
+      });
     } catch (e) {
       return errorResponse(e);
     }

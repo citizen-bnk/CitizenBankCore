@@ -8,6 +8,7 @@ import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import { and,eq,gt } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { dataScope, scopeFromVerifiedClaim, withDataScope, type DataScope } from "./execution-context";
 
 export const SESSION_COOKIE = "cb_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 8; // 8h absolute; 5-minute idle timeout enforced server-side
@@ -18,7 +19,7 @@ function secret() {
   return new TextEncoder().encode(s);
 }
 
-export type Session = { userId: string; roles: string[]; authenticatedAt?: number };
+export type Session = { userId: string; roles: string[]; authenticatedAt?: number; scope?: DataScope };
 
 export async function hashPassword(pw: string) {
   return bcrypt.hash(pw, 12);
@@ -28,8 +29,10 @@ export async function verifyPassword(pw: string, hash: string) {
 }
 
 export async function createSessionToken(s: Session) {
+  const scope = dataScope();
+  if (s.scope !== undefined && s.scope !== scope) throw new Error("Session context does not match its database");
   const [record]=await db.insert(schema.authSessions).values({userId:s.userId,expiresAt:new Date(Date.now()+SESSION_TTL_SECONDS*1000)}).returning();
-  return new SignJWT({ roles: s.roles })
+  return new SignJWT({ roles: s.roles, data_scope: scope })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(s.userId)
     .setJti(record.id)
@@ -43,13 +46,17 @@ export async function verifySessionToken(token: string | undefined): Promise<Ses
   try {
     const { payload } = await jwtVerify(token, secret(), { algorithms: ["HS256"] });
     if (!payload.sub || !payload.jti) return null;
+    const userId = payload.sub, sessionId = payload.jti;
+    const scope = scopeFromVerifiedClaim(payload.data_scope);
+    return await withDataScope(scope, async () => {
     const [record]=await db.update(schema.authSessions).set({lastSeenAt:new Date()}).where(and(
-      eq(schema.authSessions.id,payload.jti),eq(schema.authSessions.userId,payload.sub),gt(schema.authSessions.expiresAt,new Date()),
+      eq(schema.authSessions.id,sessionId),eq(schema.authSessions.userId,userId),gt(schema.authSessions.expiresAt,new Date()),
       gt(schema.authSessions.lastSeenAt,new Date(Date.now()-300_000)))).returning();
     if(!record) return null;
-    const [user]=await db.select().from(schema.users).where(eq(schema.users.id,payload.sub));
+    const [user]=await db.select().from(schema.users).where(eq(schema.users.id,userId));
     if(!user || user.suspended) return null;
-    return { userId: payload.sub, roles: user.roles, authenticatedAt:Math.floor(record.authenticatedAt.getTime()/1000) };
+    return { userId, roles: user.roles, scope, authenticatedAt:Math.floor(record.authenticatedAt.getTime()/1000) };
+    });
   } catch {
     return null;
   }
@@ -68,7 +75,7 @@ export async function setSessionCookie(s: Session) {
 
 export async function clearSessionCookie() {
   const token=(await cookies()).get(SESSION_COOKIE)?.value;
-  if(token) {try{const {payload}=await jwtVerify(token,secret(),{algorithms:['HS256']});if(payload.jti) await db.delete(schema.authSessions).where(eq(schema.authSessions.id,payload.jti));}catch{ /* Invalid or expired token has no usable session. */ }}
+  if(token) {try{const {payload}=await jwtVerify(token,secret(),{algorithms:['HS256']});const scope=scopeFromVerifiedClaim(payload.data_scope);if(payload.jti) await withDataScope(scope,()=>db.delete(schema.authSessions).where(eq(schema.authSessions.id,payload.jti!)));}catch{ /* Invalid or expired token has no usable session. */ }}
   (await cookies()).delete(SESSION_COOKIE);
   (await cookies()).delete('cb_explorer');
 }
@@ -81,7 +88,9 @@ export async function getSession(): Promise<Session | null> {
 export async function getCurrentUser() {
   const s = await getSession();
   if (!s) return null;
+  return withDataScope(s.scope ?? "live", async () => {
   const [u] = await db.select().from(schema.users).where(eq(schema.users.id, s.userId)).limit(1);
   if (!u || u.suspended) return null;
   return u;
+  });
 }

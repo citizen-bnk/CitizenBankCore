@@ -12,6 +12,7 @@ import { eq, lt } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { BankError } from "./errors";
 import { openCustomer } from "./onboarding";
+import { dataScope, scopeFromVerifiedClaim, type DataScope } from "./execution-context";
 
 export const HANDOFF_USE = "handoff";
 /** The website issues 60-second tokens. Anything signed with a longer life is refused even if the signature is good. */
@@ -43,7 +44,7 @@ export function remoteKeys(url: string): JWTVerifyGetKey {
   return set;
 }
 
-export type HandoffClaims = { personId: string; jti: string; expiresAt: Date; name: string; email: string; roles: string[] };
+export type HandoffClaims = { personId: string; jti: string; expiresAt: Date; name: string; email: string; roles: string[]; scope?: DataScope };
 
 const INVALID = new BankError(
   "SSO_INVALID", "This sign-in link is not valid or has expired. Please start again from the Citizen Bank website.", 401,
@@ -75,11 +76,13 @@ export async function verifyHandoff(
     typeof jti !== "string" || !jti || jti.length > 100 || typeof exp !== "number" || typeof iat !== "number" ||
     exp - iat > MAX_LIFETIME_SECONDS || !Array.isArray(roles) || !roles.every((r) => typeof r === "string")
   ) throw INVALID;
+  let scope: DataScope;
+  try { scope = scopeFromVerifiedClaim(payload.data_scope); } catch { throw INVALID; }
   return {
     personId: sub, jti, expiresAt: new Date(exp * 1000),
     name: typeof payload.name === "string" ? payload.name.trim() : "",
     email: typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "",
-    roles: roles as string[],
+    roles: roles as string[], scope,
   };
 }
 
@@ -103,7 +106,8 @@ const isUniqueViolation = (e: unknown) =>
     (e as { cause?: { code?: string } }).cause?.code === "23505");
 
 /** The Core user for this person, created on first visit. Never adopts a profile just because the email matches. */
-export async function userForHandoff(claims: HandoffClaims, opts: { demo: boolean }) {
+export async function userForHandoff(claims: HandoffClaims) {
+  if ((claims.scope ?? "live") !== dataScope()) throw INVALID;
   if (!claims.roles.includes("customer")) {
     throw new BankError("SSO_NOT_CUSTOMER", "Your account does not include banking.", 403);
   }
@@ -125,7 +129,7 @@ export async function userForHandoff(claims: HandoffClaims, opts: { demo: boolea
       user = await openCustomer({
         ...splitName(claims.name, claims.email), email: claims.email, personId: claims.personId,
         password: randomBytes(32).toString("base64url"), // nobody knows it: this profile signs in through the website only
-        openingDepositCents: opts.demo ? DEMO_OPENING_DEPOSIT_CENTS : 0,
+        openingDepositCents: dataScope() === "demo" ? DEMO_OPENING_DEPOSIT_CENTS : 0,
       });
     } catch (e) {
       // Two first-time visits at once: the other one won, use its profile.

@@ -4,6 +4,7 @@ import { setSessionCookie } from "@/lib/auth";
 import { body, errorResponse } from "@/lib/api";
 import { BankError } from "@/lib/errors";
 import { consumeToken, readSsoConfig, remoteKeys, userForHandoff, verifyHandoff } from "@/lib/sso";
+import { withDataScope } from "@/lib/execution-context";
 
 /**
  * Starts a Core session from a one-time handoff token issued by the Citizen Bank website.
@@ -17,14 +18,16 @@ export async function POST(req: Request) {
     }
     const { code } = await body(req, z.object({ code: z.string().min(20).max(4096) }));
     const claims = await verifyHandoff(code, cfg, remoteKeys(cfg.jwksUrl));
+    return await withDataScope(claims.scope ?? "live", async () => {
     if (!(await consumeToken(claims))) {
       throw new BankError("SSO_REPLAY", "This sign-in link has already been used. Please start again from the Citizen Bank website.", 401);
     }
-    const user = await userForHandoff(claims, { demo: process.env.DEMO_MODE === "true" });
+    const user = await userForHandoff(claims);
     await setSessionCookie({ userId: user.id, roles: user.roles });
     return NextResponse.json({
       ok: true,
       user: { firstName: user.firstName, preferredLanguage: user.preferredLanguage, preferredTheme: user.preferredTheme },
+    });
     });
   } catch (e) {
     return errorResponse(e);
