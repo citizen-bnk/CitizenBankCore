@@ -20,7 +20,7 @@ async function readChallengeToken(token:string) {
 }
 export function assertOrigin(req:Request) {
   const origin=req.headers.get('origin');
-  const allowed=(process.env.AUTH_ALLOWED_ORIGINS || 'https://citizenbankapp.vercel.app,https://citizeninternetbanking.vercel.app').split(',').map(x=>x.trim());
+  const allowed=(process.env.AUTH_ALLOWED_ORIGINS || 'https://app.citizenbank.co.ls,https://banking.citizenbank.co.ls').split(',').map(x=>x.trim());
   if(process.env.NODE_ENV!=='production') allowed.push('http://localhost:3000','http://localhost:3001');
   if(!origin || !allowed.includes(origin)) throw new BankError('BAD_ORIGIN','This sign-in origin is not allowed.',403);
   return origin;
