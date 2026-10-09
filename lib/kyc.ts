@@ -1,6 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { db, schema, type Tx } from '@/db';
 import { BankError } from './errors';
+import { dataScope } from './execution-context';
 import { assess, DEMO_POLICY, type Activity, type Evidence } from './kyc-policy';
 export { assess, DEMO_POLICY };
 export class KycRequired extends BankError {
@@ -12,7 +13,7 @@ export async function kycState(userId: string, tx: Tx | typeof db = db) {
 }
 export async function requireKyc(userId: string, activity: Activity, cents = 0, tx: Tx | typeof db = db) {
   // This policy is demonstration-only. Configuration cannot enable real-money use.
-  if (process.env.DEMO_MODE !== 'true') throw new BankError('POLICY_NOT_APPROVED','Real-money activities are unavailable. This policy is for demonstration only.',403);
+  if (process.env.DEMO_MODE !== 'true' || dataScope() !== 'demo') throw new BankError('POLICY_NOT_APPROVED','Real-money activities are unavailable. This policy is for demonstration only.',403);
   await tx.execute(sql`SELECT user_id FROM kyc_profiles WHERE user_id=${userId} FOR SHARE`);
   const [user] = await tx.select({suspended:schema.users.suspended}).from(schema.users).where(eq(schema.users.id,userId));
   if (!user || user.suspended) throw new BankError('UNAUTHENTICATED','Please sign in again.',401);

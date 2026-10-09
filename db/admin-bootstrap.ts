@@ -18,6 +18,6 @@ async function main(){
   await tx.insert(schema.adminInvites).values({id,tokenHash,userId:user.id,expiresAt});
   console.log('[admin bootstrap] Administrator profile and single-use invitation ready; activation is required.');
  });
- await (globalThis as any).__cbPool?.end();
+ await (await import('./index')).closeDatabases();
 }
 main().catch(()=>{console.error('[admin bootstrap] Failed; no usable invitation was created.');process.exit(1)});

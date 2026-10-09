@@ -38,9 +38,18 @@ function databaseIdentity(value: string): string {
 
 export function demoDatabaseUrl(env: Record<string, string | undefined> = process.env): string {
   if (env.DEMO_MODE !== "true") throw new Error("Demo mode is disabled");
-  if (!env.DATABASE_URL || !env.DEMO_DATABASE_URL) throw new Error("Separate live and demo databases are required");
-  if (databaseIdentity(env.DATABASE_URL) === databaseIdentity(env.DEMO_DATABASE_URL)) {
+  const live=env.LIVE_DATABASE_URL||env.DATABASE_URL;
+  if (!live || !env.DEMO_DATABASE_URL) throw new Error("Separate live and demo databases are required");
+  if (databaseIdentity(live) === databaseIdentity(env.DEMO_DATABASE_URL)) {
     throw new Error("Demo database must be different from the live database");
   }
   return env.DEMO_DATABASE_URL;
+}
+
+export function databaseUrlForScope(scope: DataScope = dataScope()): string {
+  if (scope === "demo") return demoDatabaseUrl();
+  const live=process.env.LIVE_DATABASE_URL||process.env.DATABASE_URL;
+  if (!live) throw new Error("Business database is not configured");
+  databaseIdentity(live);
+  return live;
 }
