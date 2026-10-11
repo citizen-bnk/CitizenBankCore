@@ -11,6 +11,7 @@ import { formatMoney, fromCents, toCents } from "./money";
 import { fxRate, SUPPORTED_COUNTRIES_CROSS_BORDER } from "./currency";
 
 import { requireKyc } from './kyc';
+import {bankingStatus} from './banking-status';
 const S = schema;
 
 /* ------------------------------------------------------------------ config */
@@ -92,13 +93,14 @@ export async function getOverview(userId: string) {
   ]);
   const recent = await listTransactions(userId, { limit: 10 });
   return {
+    bankingStatus,
     user: {
       id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, phone: user.phone,
       preferredLanguage: user.preferredLanguage, preferredTheme: user.preferredTheme, roles: user.roles,
     },
     accounts: accounts.sort((a, b) => ACCOUNT_ORDER[a.type] - ACCOUNT_ORDER[b.type]).map((a) => ({
-      id: a.id, name: a.name, type: a.type, number: a.number, last4: a.number.slice(-4),
-      currency: a.currency, balance: a.balance, status: a.status, interestRate: a.interestRate, maturesAt: a.maturesAt,
+      id: a.id, name: `${a.name} · Pre-licensing`, type: a.type, number: a.number, last4: a.number.slice(-4),
+      currency: a.currency, balance: a.balance, status: a.status, phase:bankingStatus.phase,money:bankingStatus.money, interestRate: a.interestRate, maturesAt: a.maturesAt,
     })),
     cards: cards.map((c) => ({
       id: c.id, label: c.label, last4: c.last4, brand: c.brand, kind: c.kind, form: c.form, expiry: c.expiry,
