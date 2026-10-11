@@ -3,7 +3,7 @@
  * Every function takes the authenticated userId and enforces ownership itself —
  * never trust an accountId/cardId coming from the client.
  */
-import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { db, schema, type Tx } from "@/db";
 import { BankError, notFound } from "./errors";
 import { outboundTodayCents, postTransaction, priorPosting, systemAccount } from "./ledger";
@@ -82,7 +82,7 @@ export async function getOverview(userId: string) {
   if (!user) throw notFound("user");
   const [accounts, cards, beneficiaries, billers, scheduled, loans, unread] = await Promise.all([
     db.select().from(S.accounts).where(eq(S.accounts.userId, userId)).orderBy(asc(S.accounts.createdAt)),
-    db.select().from(S.cards).where(eq(S.cards.userId, userId)).orderBy(asc(S.cards.createdAt)),
+    db.select().from(S.cards).where(and(eq(S.cards.userId, userId),isNull(S.cards.archivedAt))).orderBy(asc(S.cards.createdAt)),
     db.select().from(S.beneficiaries).where(eq(S.beneficiaries.userId, userId))
       .orderBy(sql`${S.beneficiaries.lastPaidAt} DESC NULLS LAST`, asc(S.beneficiaries.name)),
     db.select().from(S.billers).where(eq(S.billers.active, true)).orderBy(asc(S.billers.name)),
@@ -322,7 +322,7 @@ export async function deleteBeneficiary(userId: string, id: string) {
 /* ------------------------------------------------------------------ cards */
 
 async function ownedCard(userId: string, cardId: string) {
-  const [c] = await db.select().from(S.cards).where(and(eq(S.cards.id, cardId), eq(S.cards.userId, userId))).limit(1);
+  const [c] = await db.select().from(S.cards).where(and(eq(S.cards.id, cardId), eq(S.cards.userId, userId),isNull(S.cards.archivedAt))).limit(1);
   if (!c) throw notFound("card");
   return c;
 }
@@ -332,7 +332,8 @@ export async function setCardStatus(userId: string, cardId: string, action: "fre
   if (card.status === "BLOCKED") throw new BankError("CARD_BLOCKED", "This card is permanently blocked. Please order a replacement.");
   if (action === 'unfreeze') await requireKyc(userId, 'card');
   const status = action === "freeze" ? "FROZEN" : action === "block" ? "BLOCKED" : "ACTIVE";
-  const [row] = await db.update(S.cards).set({ status }).where(eq(S.cards.id, card.id)).returning();
+  const [row] = await db.update(S.cards).set({ status }).where(and(eq(S.cards.id, card.id),eq(S.cards.status,card.status),isNull(S.cards.archivedAt))).returning();
+  if(!row)throw new BankError('CARD_CHANGED','This card changed elsewhere. Reload before retrying.',409);
   return row;
 }
 

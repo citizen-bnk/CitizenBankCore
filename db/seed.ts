@@ -71,6 +71,7 @@ async function main() {
   /* ------------------------------------------------------ demo customers */
   const [{ n: userCount }] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.users);
   if (userCount > 0 || dataScope() !== "demo" || process.env.SEED_DEMO_DATA !== "true") {
+    if(dataScope()==='demo'&&process.env.SEED_DEMO_DATA==='true')console.log('[seed] Missing fictional cards added:',await (await import('./card-seed')).ensureDemonstrationCards());
     console.log("[seed] Reference data up to date (demo customers skipped).");
     await (await import("./index")).db.$client.end();
     return;
@@ -164,6 +165,7 @@ async function main() {
   ]);
 
   console.log(`[seed] Demo customers created: palesa@demo.citizenbank.co.ls / thabo@demo.citizenbank.co.ls (password from DEMO_PASSWORD).`);
+  if(dataScope()==='demo')await (await import('./card-seed')).ensureDemonstrationCards();
   await db.$client.end();
 }
 

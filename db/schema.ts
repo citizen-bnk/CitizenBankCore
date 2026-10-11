@@ -186,6 +186,7 @@ export const scheduledPayments = pgTable("scheduled_payments", {
 
 export const cards = pgTable("cards", {
   id: id(),
+  archivedAt: timestamp('archived_at', {withTimezone:true}),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   accountId: text("account_id").references(() => accounts.id),
   label: varchar("label", { length: 60 }).notNull(),
