@@ -139,8 +139,10 @@ export async function userForHandoff(claims: HandoffClaims) {
     }
   }
   if (user.suspended) throw new BankError("SUSPENDED", "This profile is suspended. Please contact support.", 403);
+  const [emailOwner]=await db.select({id:schema.users.id}).from(schema.users).where(eq(schema.users.email,claims.email)).limit(1);
+  if(emailOwner&&emailOwner.id!==user.id)throw new BankError('SSO_EMAIL_IN_USE','This login address belongs to another banking profile. Ask an administrator to reconcile it.',409);
   const refreshedName = splitName(claims.name, claims.email);
-  await db.update(schema.users).set({ ...refreshedName, lastLoginAt: new Date(), failedLogins: 0, lockedUntil: null })
+  await db.update(schema.users).set({ ...refreshedName,email:claims.email, lastLoginAt: new Date(), failedLogins: 0, lockedUntil: null })
     .where(eq(schema.users.id, user.id));
-  return { ...user, ...refreshedName };
+  return { ...user, ...refreshedName,email:claims.email };
 }

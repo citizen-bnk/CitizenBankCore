@@ -13,9 +13,9 @@ export function authed<P = Record<string, string>>(
   handler: (req: Request, session: Session, ctx: Ctx<P>) => Promise<unknown>,
 ) {
   return async (req: Request, ctx: Ctx<P>) => {
+    try {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: "Please sign in again.", code: "UNAUTHENTICATED" }, { status: 401 });
-    try {
       return await withDataScope(session.scope ?? "live", async () => {
       const path=new URL(req.url).pathname;
       if(bankingCustomerPath(path)&&!canUseBanking(session.roles))throw new BankError('BANKING_ACCESS_REQUIRED','Banking needs a customer role. Open your Citizen Hub profile or ask an administrator to review your access.',403);

@@ -1,3 +1,5 @@
+import {BankError} from './errors';
+import {readIdentityAuthority,effectiveBankRoles,credentialsWereRevoked} from './identity-authority';
 /**
  * Session auth: bcrypt password hashes + a signed JWT in an httpOnly cookie.
  * The same session works for the mobile PWA and internet banking because both
@@ -55,9 +57,11 @@ export async function verifySessionToken(token: string | undefined): Promise<Ses
     if(!record) return null;
     const [user]=await db.select().from(schema.users).where(eq(schema.users.id,userId));
     if(!user || user.suspended) return null;
-    return { userId, roles: user.roles, scope, authenticatedAt:Math.floor(record.authenticatedAt.getTime()/1000) };
+    let roles:string[]=user.roles;if(user.personId){const identity=await readIdentityAuthority(user.personId);if(!identity||credentialsWereRevoked(identity,record.authenticatedAt)){await db.delete(schema.authSessions).where(eq(schema.authSessions.id,sessionId));return null;}const current=effectiveBankRoles(roles,identity,scope);if(!current)return null;roles=current;}
+    return { userId, roles, scope, authenticatedAt:Math.floor(record.authenticatedAt.getTime()/1000) };
     });
-  } catch {
+  } catch(error) {
+    if(error instanceof BankError)throw error;
     return null;
   }
 }
