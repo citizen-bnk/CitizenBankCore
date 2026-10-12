@@ -5,6 +5,7 @@ import { BankError } from "./errors";
 import { KycRequired } from './kyc';
 import { withDataScope } from "./execution-context";
 
+import {bankingCustomerPath,canUseBanking} from './access-policy';
 type Ctx<P> = { params: Promise<P> };
 
 /** Wraps a route handler: requires a session, maps domain/validation errors to JSON. */
@@ -17,6 +18,7 @@ export function authed<P = Record<string, string>>(
     try {
       return await withDataScope(session.scope ?? "live", async () => {
       const path=new URL(req.url).pathname;
+      if(bankingCustomerPath(path)&&!canUseBanking(session.roles))throw new BankError('BANKING_ACCESS_REQUIRED','Banking needs a customer role. Open your Citizen Hub profile or ask an administrator to review your access.',403);
       if(req.method!=='GET') {
         const { assertOrigin }=await import('./passkey-auth');
         assertOrigin(req);
