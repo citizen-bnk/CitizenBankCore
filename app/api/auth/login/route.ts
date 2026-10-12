@@ -31,7 +31,7 @@ export async function POST(req: Request) {
       return await withDataScope('live',async()=>{
         if(!(await consumeToken(claims)))throw new BankError('SSO_REPLAY','This sign-in attempt was already used. Start sign-in again.',401);
         const user=await userForHandoff(claims);
-        await setSessionCookie({userId:user.id,roles:user.roles});
+        await setSessionCookie({userId:user.id,roles:user.roles,authenticatedAt:claims.issuedAt?Math.floor(claims.issuedAt.getTime()/1000):undefined});
         return NextResponse.json({ok:true,user:{firstName:user.firstName,preferredLanguage:user.preferredLanguage,preferredTheme:user.preferredTheme}},{headers:{'Cache-Control':'no-store'}});
       });
     }

@@ -33,7 +33,7 @@ export async function verifyPassword(pw: string, hash: string) {
 export async function createSessionToken(s: Session) {
   const scope = dataScope();
   if (s.scope !== undefined && s.scope !== scope) throw new Error("Session context does not match its database");
-  const [record]=await db.insert(schema.authSessions).values({userId:s.userId,expiresAt:new Date(Date.now()+SESSION_TTL_SECONDS*1000)}).returning();
+  const [record]=await db.insert(schema.authSessions).values({userId:s.userId,...(s.authenticatedAt!==undefined?{authenticatedAt:new Date(s.authenticatedAt*1000)}:{}),expiresAt:new Date(Date.now()+SESSION_TTL_SECONDS*1000)}).returning();
   return new SignJWT({ roles: s.roles, data_scope: scope })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(s.userId)

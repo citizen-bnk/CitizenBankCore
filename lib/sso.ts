@@ -1,3 +1,4 @@
+import {readIdentityAuthority,effectiveBankRoles,credentialsWereRevoked} from './identity-authority';
 /**
  * Single sign-on from the Citizen Bank website.
  *
@@ -44,7 +45,7 @@ export function remoteKeys(url: string): JWTVerifyGetKey {
   return set;
 }
 
-export type HandoffClaims = { personId: string; jti: string; expiresAt: Date; name: string; email: string; roles: string[]; scope?: DataScope };
+export type HandoffClaims = { personId: string; jti: string; expiresAt: Date; name: string; email: string; roles: string[]; scope?: DataScope;issuedAt?:Date };
 
 const INVALID = new BankError(
   "SSO_INVALID", "This sign-in link is not valid or has expired. Please start again from the Citizen Bank website.", 401,
@@ -79,7 +80,7 @@ export async function verifyHandoff(
   let scope: DataScope;
   try { scope = scopeFromVerifiedClaim(payload.data_scope); } catch { throw INVALID; }
   return {
-    personId: sub, jti, expiresAt: new Date(exp * 1000),
+    personId: sub, jti, expiresAt: new Date(exp * 1000),issuedAt:new Date(iat*1000),
     name: typeof payload.name === "string" ? payload.name.trim() : "",
     email: typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "",
     roles: roles as string[], scope,
@@ -111,6 +112,7 @@ export async function userForHandoff(claims: HandoffClaims) {
   if (!claims.roles.includes("customer")) {
     throw new BankError("SSO_NOT_CUSTOMER", "Your account does not include banking.", 403);
   }
+  if(claims.issuedAt){const identity=await readIdentityAuthority(claims.personId);if(!identity||credentialsWereRevoked(identity,claims.issuedAt)||!effectiveBankRoles(['CUSTOMER'],identity,dataScope())?.includes('CUSTOMER'))throw new BankError('SSO_SESSION_REVOKED','Your Citizen access changed after this sign-in link was issued. Sign in again.',401);}
   const byPerson = async () =>
     (await db.select().from(schema.users).where(eq(schema.users.personId, claims.personId)).limit(1))[0];
 

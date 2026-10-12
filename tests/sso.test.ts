@@ -44,6 +44,7 @@ test("a token signed by the website's Python signer verifies in Core (cross-lang
   assert.equal(claims.email, "palesa@demo.test"); // lower-cased
   assert.deepEqual(claims.roles, ["customer", "investor"]);
   assert.equal(claims.expiresAt.getTime(), (f.issuedAt + 60) * 1000);
+  assert.equal(claims.issuedAt?.getTime(),f.issuedAt*1000);
   // and the same token fails once it has expired, or before it was issued
   await rejects(verifyHandoff(f.token, { issuer: f.issuer, audiences: ["banking"] }, keys, new Date((f.issuedAt + 70) * 1000)));
   await rejects(verifyHandoff(f.token, { issuer: f.issuer, audiences: ["banking"] }, keys, new Date((f.issuedAt - 100) * 1000)));

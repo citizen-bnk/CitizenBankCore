@@ -23,7 +23,7 @@ export async function POST(req: Request) {
       throw new BankError("SSO_REPLAY", "This sign-in link has already been used. Please start again from the Citizen Bank website.", 401);
     }
     const user = await userForHandoff(claims);
-    await setSessionCookie({ userId: user.id, roles: user.roles });
+    await setSessionCookie({ userId: user.id, roles: user.roles,authenticatedAt:claims.issuedAt?Math.floor(claims.issuedAt.getTime()/1000):undefined });
     return NextResponse.json({
       ok: true,
       user: { firstName: user.firstName, preferredLanguage: user.preferredLanguage, preferredTheme: user.preferredTheme },
