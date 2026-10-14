@@ -98,6 +98,7 @@ export async function getOverview(userId: string) {
   const recent = await listTransactions(userId, { limit: 10 });
   return {
     bankingStatus,
+    energize: await energizeStatus(userId),
     user: {
       id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, phone: user.phone,
       preferredLanguage: user.preferredLanguage, preferredTheme: user.preferredTheme, roles: user.roles,
