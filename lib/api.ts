@@ -22,7 +22,7 @@ export function authed<P = Record<string, string>>(
       if(req.method!=='GET') {
         const { assertOrigin }=await import('./passkey-auth');
         assertOrigin(req);
-        let critical=/^\/api\/(payments|transfers|scheduled|accounts\/open|cards)(\/|$)/.test(path);
+        let critical=/^\/api\/(payments|transfers|scheduled|accounts\/(open|energize)|cards)(\/|$)/.test(path);
         if(path.endsWith('/status')) {const action=(await req.clone().json().catch(()=>({}))).action;if(['freeze','block'].includes(action)) critical=false;}
         if(req.method==='DELETE') critical=false;
         if(critical && Date.now()/1000-(session.authenticatedAt ?? 0)>300) throw new BankError('REAUTH_REQUIRED','Unlock securely again before confirming this activity.',403);
