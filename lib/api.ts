@@ -3,7 +3,9 @@ import { ZodError, type ZodTypeAny, type z } from "zod";
 import { getSession, type Session } from "./auth";
 import { BankError } from "./errors";
 import { KycRequired } from './kyc';
+import { withDataScope } from "./execution-context";
 
+import {bankingCustomerPath,canUseBanking} from './access-policy';
 type Ctx<P> = { params: Promise<P> };
 
 /** Wraps a route handler: requires a session, maps domain/validation errors to JSON. */
@@ -11,20 +13,23 @@ export function authed<P = Record<string, string>>(
   handler: (req: Request, session: Session, ctx: Ctx<P>) => Promise<unknown>,
 ) {
   return async (req: Request, ctx: Ctx<P>) => {
+    try {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: "Please sign in again.", code: "UNAUTHENTICATED" }, { status: 401 });
-    try {
+      return await withDataScope(session.scope ?? "live", async () => {
       const path=new URL(req.url).pathname;
+      if(bankingCustomerPath(path)&&!canUseBanking(session.roles))throw new BankError('BANKING_ACCESS_REQUIRED','Banking needs a customer role. Open your Citizen Hub profile or ask an administrator to review your access.',403);
       if(req.method!=='GET') {
         const { assertOrigin }=await import('./passkey-auth');
         assertOrigin(req);
-        let critical=/^\/api\/(payments|transfers|scheduled|accounts\/open|cards)(\/|$)/.test(path);
+        let critical=/^\/api\/(payments|transfers|scheduled|accounts\/(open|energize)|cards)(\/|$)/.test(path);
         if(path.endsWith('/status')) {const action=(await req.clone().json().catch(()=>({}))).action;if(['freeze','block'].includes(action)) critical=false;}
         if(req.method==='DELETE') critical=false;
         if(critical && Date.now()/1000-(session.authenticatedAt ?? 0)>300) throw new BankError('REAUTH_REQUIRED','Unlock securely again before confirming this activity.',403);
       }
       const out = await handler(req, session, ctx);
       return out instanceof Response ? out : NextResponse.json(out ?? { ok: true });
+      });
     } catch (e) {
       return errorResponse(e);
     }

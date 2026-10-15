@@ -7,7 +7,7 @@ import { profileProof } from "@/lib/profile-service";
 const sharedProfile = authed(async (req, session) => {
   const [user] = await db.select({personId:schema.users.personId}).from(schema.users).where(eq(schema.users.id,session.userId));
   if (!user?.personId) return {linked:false,roles:session.roles};
-  const base = process.env.PLATFORM_WEBSITE_URL;
+  const base = process.env.CITIZEN_HUB_URL || process.env.PLATFORM_WEBSITE_URL;
   const secret = process.env.PROFILE_SERVICE_SECRET;
   if (!base || !secret) throw new BankError("PROFILE_UNAVAILABLE","Shared profile is temporarily unavailable",503);
   const body = req.method === "PATCH" ? await req.text() : "";

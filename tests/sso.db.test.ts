@@ -2,6 +2,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
+import { withDataScope } from "../lib/execution-context";
 
 /**
  * Database-backed SSO tests. Run against a migrated and seeded database:
@@ -21,7 +22,7 @@ before(async () => {
   ({ BankError } = await import("../lib/errors"));
 });
 after(async () => {
-  if (!skip) await (dbm.db as unknown as { $client: { end(): Promise<void> } }).$client.end();
+  if (!skip) await dbm.closeDatabases();
 });
 
 const claims = (over: Partial<import("../lib/sso").HandoffClaims> = {}) => ({
@@ -51,9 +52,9 @@ test("redeeming purges tokens that expired more than a day ago, and keeps recent
   assert.ok(left.includes(recent.jti));
 });
 
-test("first visit opens a demo customer with accounts and a demo deposit; later visits reuse it", { skip }, async () => {
-  const c = claims({ name: "Lerato Mokoena Demo" });
-  const first = await sso.userForHandoff(c, { demo: true });
+test("first visit opens a demo customer with accounts and a demo deposit; later visits reuse it", { skip: skip || !process.env.DEMO_DATABASE_URL }, async () => withDataScope("demo", async () => {
+  const c = claims({ name: "Lerato Mokoena Demo", scope: "demo" });
+  const first = await sso.userForHandoff(c);
   assert.equal(first.personId, c.personId);
   assert.equal(first.email, c.email);
   assert.deepEqual([first.firstName, first.lastName], ["Lerato", "Mokoena Demo"]);
@@ -61,54 +62,56 @@ test("first visit opens a demo customer with accounts and a demo deposit; later 
   const accounts = await accountsOf(first.id);
   assert.deepEqual(accounts.map((a) => a.type).sort(), ["CURRENT", "SAVINGS"]);
   assert.equal(accounts.find((a) => a.type === "CURRENT")!.balance, "5000.00");
-  const second = await sso.userForHandoff({ ...c, jti: randomUUID() }, { demo: true });
+  const second = await sso.userForHandoff({ ...c, jti: randomUUID() });
   assert.equal(second.id, first.id);
   assert.equal((await accountsOf(first.id)).length, 2);
-});
+}));
 
-test("outside demo mode no money is created", { skip }, async () => {
-  const u = await sso.userForHandoff(claims(), { demo: false });
+test("a normal customer gets no fictional funds even when demo entry is enabled", { skip }, async () => {
+  const u = await sso.userForHandoff(claims());
   assert.equal((await accountsOf(u.id)).find((a) => a.type === "CURRENT")!.balance, "0.00");
 });
 
 test("roles claimed by the website never become Core roles", { skip }, async () => {
-  const u = await sso.userForHandoff(claims({ roles: ["customer", "super_admin", "back_office", "board_member"] }), { demo: false });
+  const u = await sso.userForHandoff(claims({ roles: ["customer", "super_admin", "back_office", "board_member"] }));
   assert.deepEqual(u.roles, ["CUSTOMER"]);
 });
 
 test("someone without the customer role gets no banking profile", { skip }, async () => {
   for (const roles of [[], ["investor"], ["board_member", "super_admin"]]) {
     const c = claims({ roles });
-    await rejectsWith(sso.userForHandoff(c, { demo: true }), "SSO_NOT_CUSTOMER", 403);
+    await rejectsWith(sso.userForHandoff(c), "SSO_NOT_CUSTOMER", 403);
     assert.equal((await usersWith("personId", c.personId)).length, 0);
     assert.equal((await usersWith("email", c.email)).length, 0);
   }
 });
 
 test("an existing banking profile with the same email is never adopted", { skip }, async () => {
-  const c = claims({ email: "palesa@demo.citizenbank.co.ls" });
-  await rejectsWith(sso.userForHandoff(c, { demo: true }), "SSO_EMAIL_IN_USE", 409);
+  const existingEmail = `${randomUUID()}@unlinked.test`;
+  await dbm.db.insert(dbm.schema.users).values({ email: existingEmail, passwordHash: "unused", firstName: "Existing", lastName: "Customer" });
+  const c = claims({ email: existingEmail });
+  await rejectsWith(sso.userForHandoff(c), "SSO_EMAIL_IN_USE", 409);
   assert.equal((await usersWith("personId", c.personId)).length, 0);
-  const [palesa] = await usersWith("email", "palesa@demo.citizenbank.co.ls");
+  const [palesa] = await usersWith("email", existingEmail);
   assert.equal(palesa.personId, null);
 });
 
 test("email addresses that are missing or malformed are refused", { skip }, async () => {
   for (const email of ["", "no-at-sign", "a@b", "x y@z.test", `${"a".repeat(250)}@x.test`]) {
-    await rejectsWith(sso.userForHandoff(claims({ email }), { demo: true }), "SSO_NO_EMAIL", 422);
+    await rejectsWith(sso.userForHandoff(claims({ email })), "SSO_NO_EMAIL", 422);
   }
 });
 
 test("a suspended banking profile cannot sign in through SSO", { skip }, async () => {
   const c = claims();
-  const u = await sso.userForHandoff(c, { demo: false });
+  const u = await sso.userForHandoff(c);
   await dbm.db.update(dbm.schema.users).set({ suspended: true }).where(eq(dbm.schema.users.id, u.id));
-  await rejectsWith(sso.userForHandoff({ ...c, jti: randomUUID() }, { demo: false }), "SUSPENDED", 403);
+  await rejectsWith(sso.userForHandoff({ ...c, jti: randomUUID() }), "SUSPENDED", 403);
 });
 
 test("two first visits at once create exactly one profile", { skip }, async () => {
   const c = claims();
-  const [a, b] = await Promise.all([sso.userForHandoff(c, { demo: true }), sso.userForHandoff({ ...c, jti: randomUUID() }, { demo: true })]);
+  const [a, b] = await Promise.all([sso.userForHandoff(c), sso.userForHandoff({ ...c, jti: randomUUID() })]);
   assert.equal(a.id, b.id);
   assert.equal((await usersWith("personId", c.personId)).length, 1);
   assert.equal((await accountsOf(a.id)).length, 2);
@@ -116,16 +119,16 @@ test("two first visits at once create exactly one profile", { skip }, async () =
 
 test("an SSO-only profile has an unknown password, so it cannot be signed into with a password", { skip }, async () => {
   const bcrypt = await import("bcryptjs");
-  const u = await sso.userForHandoff(claims(), { demo: false });
+  const u = await sso.userForHandoff(claims());
   for (const guess of ["", "password", "Citizen2026!", "Citizen-Demo-2026!"]) {
     assert.equal(await bcrypt.compare(guess, u.passwordHash), false);
   }
 });
 
 test("names without a surname still produce a valid profile", { skip }, async () => {
-  const one = await sso.userForHandoff(claims({ name: "Thabo" }), { demo: false });
+  const one = await sso.userForHandoff(claims({ name: "Thabo" }));
   assert.deepEqual([one.firstName, one.lastName], ["Thabo", "-"]);
   const local = `from-email-${randomUUID().slice(0, 8)}`;
-  const none = await sso.userForHandoff(claims({ name: "", email: `${local}@demo.test` }), { demo: false });
+  const none = await sso.userForHandoff(claims({ name: "", email: `${local}@demo.test` }));
   assert.deepEqual([none.firstName, none.lastName], [local, "-"]);
 });

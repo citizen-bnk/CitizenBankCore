@@ -17,6 +17,7 @@ jobs:
           --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
     env:
       DATABASE_URL: postgresql://test:test@localhost:5432/citizen_test
+      DEMO_DATABASE_URL: postgresql://test:test@localhost:5432/citizen_fixtures
       AUTH_SECRET: build-only-test-secret-with-no-production-access
       DEMO_MODE: "true"
       SEED_DEMO_DATA: "true"
@@ -27,6 +28,13 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Create separate fictional database
+        run: node -e 'const {Pool}=require("pg");const p=new Pool();p.query("CREATE DATABASE citizen_fixtures").then(()=>p.end()).catch(()=>process.exit(1))'
+        env:
+          PGHOST: localhost
+          PGUSER: test
+          PGPASSWORD: test
+          PGDATABASE: citizen_test
       - run: npm run db:migrate
       - run: npm run db:seed
       - run: npm test

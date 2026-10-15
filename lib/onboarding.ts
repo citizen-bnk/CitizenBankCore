@@ -4,7 +4,7 @@ import { hashPassword } from "./auth";
 import { BankError } from "./errors";
 import { postTransaction, systemAccount } from "./ledger";
 
-const PREFIX = { CURRENT: "10", SAVINGS: "20", FIXED_DEPOSIT: "30", INTERNAL: "90" } as const;
+const PREFIX = { CURRENT: "10", SAVINGS: "20", FIXED_DEPOSIT: "30", INTERNAL: "90", CRYPTO: "40" } as const;
 
 /** 10-digit account number: 2-digit product prefix + 7 random digits + Luhn check digit. */
 export async function newAccountNumber(tx: Tx | typeof db, type: keyof typeof PREFIX) {

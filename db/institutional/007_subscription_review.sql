@@ -1,0 +1,18 @@
+ALTER TABLE hub_subscription_requests DROP CONSTRAINT hub_subscription_requests_status_check;
+ALTER TABLE hub_subscription_requests ADD CONSTRAINT hub_subscription_requests_status_check CHECK(status IN('submitted','under_review','awaiting_agreement','awaiting_payment','received','pending_conversion','declined','withdrawn'));
+ALTER TABLE hub_subscription_requests ADD COLUMN version integer NOT NULL DEFAULT 1;
+ALTER TABLE hub_subscription_requests ADD COLUMN review_note text;
+ALTER TABLE hub_subscription_requests ADD COLUMN agreement_link text;
+ALTER TABLE hub_subscription_requests ADD COLUMN payment_link text;
+ALTER TABLE hub_subscription_requests ADD COLUMN invoice_link text;
+ALTER TABLE hub_subscription_requests ADD COLUMN receipt_link text;
+ALTER TABLE hub_subscription_requests ADD COLUMN certificate_preview_link text;
+ALTER TABLE hub_subscription_requests ADD COLUMN reviewed_by uuid REFERENCES hub_people(id);
+ALTER TABLE hub_subscription_requests ADD COLUMN reviewed_at timestamptz;
+ALTER TABLE hub_subscription_requests ADD CONSTRAINT subscription_agreement_drive CHECK(agreement_link IS NULL OR agreement_link ~ '^https://(drive.google.com/file/d/|docs.google.com/document/d/)');
+ALTER TABLE hub_subscription_requests ADD CONSTRAINT subscription_payment_drive CHECK(payment_link IS NULL OR payment_link ~ '^https://(drive.google.com/file/d/|docs.google.com/document/d/)');
+ALTER TABLE hub_subscription_requests ADD CONSTRAINT subscription_received_evidence CHECK(status NOT IN('received','pending_conversion') OR (agreement_link IS NOT NULL AND payment_link IS NOT NULL AND reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL));
+CREATE INDEX hub_subscription_review_idx ON hub_subscription_requests(scope,status,created_at);
+ALTER TABLE hub_subscription_requests ADD CONSTRAINT subscription_invoice_drive CHECK(invoice_link IS NULL OR invoice_link ~ '^https://(drive.google.com/file/d/|docs.google.com/document/d/)');
+ALTER TABLE hub_subscription_requests ADD CONSTRAINT subscription_receipt_drive CHECK(receipt_link IS NULL OR receipt_link ~ '^https://(drive.google.com/file/d/|docs.google.com/document/d/)');
+ALTER TABLE hub_subscription_requests ADD CONSTRAINT subscription_certificate_drive CHECK(certificate_preview_link IS NULL OR certificate_preview_link ~ '^https://(drive.google.com/file/d/|docs.google.com/document/d/)');
