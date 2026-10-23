@@ -27,7 +27,7 @@ after(async () => {
 
 const claims = (over: Partial<import("../lib/sso").HandoffClaims> = {}) => ({
   personId: randomUUID(), jti: randomUUID(), expiresAt: new Date(Date.now() + 60_000),
-  name: "Lerato Demo", email: `${randomUUID()}@demo.test`, roles: ["customer"], ...over,
+  name: "Lerato Demo", email: `${randomUUID()}@demo.test`, phone: "+266 5800 1234", roles: ["customer"], ...over,
 });
 const rejectsWith = (p: Promise<unknown>, c: string, status: number) =>
   assert.rejects(p, (e: unknown) => e instanceof BankError && e.code === c && e.status === status);
@@ -85,6 +85,26 @@ test("someone without the customer role gets no banking profile", { skip }, asyn
     assert.equal((await usersWith("email", c.email)).length, 0);
   }
 });
+
+test("a seeded demo user with the same email is linked without replacing its existing account record", { skip: skip || !process.env.DEMO_DATABASE_URL }, async () => withDataScope("demo", async () => {
+  const email = `legacy-${randomUUID()}@demo.test`;
+  const [legacy] = await dbm.db.insert(dbm.schema.users).values({
+    email,
+    passwordHash: "unused-demo-password-hash",
+    firstName: "Legacy",
+    lastName: "Demo",
+    phone: "+266 5000 0000",
+  }).returning();
+  const c = claims({ scope: "demo", email, name: "Palesa Mokoena", phone: "+266 5888 1234" });
+  const linked = await sso.userForHandoff(c);
+  assert.equal(linked.id, legacy.id);
+  assert.equal(linked.personId, c.personId);
+  assert.equal(linked.email, email);
+  assert.equal(linked.firstName, "Palesa");
+  assert.equal(linked.lastName, "Mokoena");
+  assert.equal(linked.phone, "+266 5888 1234");
+  assert.equal((await usersWith("email", email)).length, 1);
+}));
 
 test("an existing banking profile with the same email is never adopted", { skip }, async () => {
   const existingEmail = `${randomUUID()}@unlinked.test`;
