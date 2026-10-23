@@ -1,9 +1,13 @@
+import {compatibleCardAccount,cardFormAllowed} from './card-policy';
+import {newAccountNumber} from './onboarding';
+import {randomInt} from 'node:crypto';
+import {energizeStatus} from './energize';
 /**
  * Banking services shared by the mobile app, internet banking and the AI assistant.
  * Every function takes the authenticated userId and enforces ownership itself —
  * never trust an accountId/cardId coming from the client.
  */
-import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { db, schema, type Tx } from "@/db";
 import { BankError, notFound } from "./errors";
 import { outboundTodayCents, postTransaction, priorPosting, systemAccount } from "./ledger";
@@ -11,6 +15,7 @@ import { formatMoney, fromCents, toCents } from "./money";
 import { fxRate, SUPPORTED_COUNTRIES_CROSS_BORDER } from "./currency";
 
 import { requireKyc } from './kyc';
+import {bankingStatus} from './banking-status';
 const S = schema;
 
 /* ------------------------------------------------------------------ config */
@@ -74,14 +79,14 @@ async function notify(tx: Tx, userId: string, title: string, body: string) {
 
 /* --------------------------------------------------------------- overview */
 
-const ACCOUNT_ORDER: Record<string, number> = { CURRENT: 0, SAVINGS: 1, FIXED_DEPOSIT: 2, INTERNAL: 3 };
+const ACCOUNT_ORDER: Record<string, number> = { CURRENT: 0, SAVINGS: 1, FIXED_DEPOSIT: 2, CRYPTO: 3, INTERNAL: 4 };
 
 export async function getOverview(userId: string) {
   const [user] = await db.select().from(S.users).where(eq(S.users.id, userId)).limit(1);
   if (!user) throw notFound("user");
   const [accounts, cards, beneficiaries, billers, scheduled, loans, unread] = await Promise.all([
     db.select().from(S.accounts).where(eq(S.accounts.userId, userId)).orderBy(asc(S.accounts.createdAt)),
-    db.select().from(S.cards).where(eq(S.cards.userId, userId)).orderBy(asc(S.cards.createdAt)),
+    db.select().from(S.cards).where(and(eq(S.cards.userId, userId),isNull(S.cards.archivedAt))).orderBy(asc(S.cards.createdAt)),
     db.select().from(S.beneficiaries).where(eq(S.beneficiaries.userId, userId))
       .orderBy(sql`${S.beneficiaries.lastPaidAt} DESC NULLS LAST`, asc(S.beneficiaries.name)),
     db.select().from(S.billers).where(eq(S.billers.active, true)).orderBy(asc(S.billers.name)),
@@ -92,13 +97,15 @@ export async function getOverview(userId: string) {
   ]);
   const recent = await listTransactions(userId, { limit: 10 });
   return {
+    bankingStatus,
+    energize: await energizeStatus(userId),
     user: {
       id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, phone: user.phone,
       preferredLanguage: user.preferredLanguage, preferredTheme: user.preferredTheme, roles: user.roles,
     },
     accounts: accounts.sort((a, b) => ACCOUNT_ORDER[a.type] - ACCOUNT_ORDER[b.type]).map((a) => ({
-      id: a.id, name: a.name, type: a.type, number: a.number, last4: a.number.slice(-4),
-      currency: a.currency, balance: a.balance, status: a.status, interestRate: a.interestRate, maturesAt: a.maturesAt,
+      id: a.id, name: `${a.name} · Pre-licensing`, type: a.type, number: a.number, last4: a.number.slice(-4),
+      allowMixedCardForms:a.allowMixedCardForms,allowedCardForms:a.allowMixedCardForms?['VIRTUAL','PHYSICAL']:[...new Set(cards.filter(c=>c.accountId===a.id).map(c=>c.form))].length>1?[]:cards.some(c=>c.accountId===a.id)?[cards.find(c=>c.accountId===a.id)!.form]:['VIRTUAL','PHYSICAL'],currency: a.currency, balance: a.balance, status: a.status, phase:bankingStatus.phase,money:bankingStatus.money, interestRate: a.interestRate, maturesAt: a.maturesAt,
     })),
     cards: cards.map((c) => ({
       id: c.id, label: c.label, last4: c.last4, brand: c.brand, kind: c.kind, form: c.form, expiry: c.expiry,
@@ -320,7 +327,7 @@ export async function deleteBeneficiary(userId: string, id: string) {
 /* ------------------------------------------------------------------ cards */
 
 async function ownedCard(userId: string, cardId: string) {
-  const [c] = await db.select().from(S.cards).where(and(eq(S.cards.id, cardId), eq(S.cards.userId, userId))).limit(1);
+  const [c] = await db.select().from(S.cards).where(and(eq(S.cards.id, cardId), eq(S.cards.userId, userId),isNull(S.cards.archivedAt))).limit(1);
   if (!c) throw notFound("card");
   return c;
 }
@@ -330,7 +337,8 @@ export async function setCardStatus(userId: string, cardId: string, action: "fre
   if (card.status === "BLOCKED") throw new BankError("CARD_BLOCKED", "This card is permanently blocked. Please order a replacement.");
   if (action === 'unfreeze') await requireKyc(userId, 'card');
   const status = action === "freeze" ? "FROZEN" : action === "block" ? "BLOCKED" : "ACTIVE";
-  const [row] = await db.update(S.cards).set({ status }).where(eq(S.cards.id, card.id)).returning();
+  const [row] = await db.update(S.cards).set({ status }).where(and(eq(S.cards.id, card.id),eq(S.cards.status,card.status),isNull(S.cards.archivedAt))).returning();
+  if(!row)throw new BankError('CARD_CHANGED','This card changed elsewhere. Reload before retrying.',409);
   return row;
 }
 
@@ -348,39 +356,20 @@ export async function setCardLimits(userId: string, cardId: string, p: { dailyCe
   return row;
 }
 
-export async function orderCard(
-  userId: string,
-  p: { kind: "DEBIT" | "CRYPTO"; accountId?: string; form: "VIRTUAL" | "PHYSICAL"; deliveryAddress?: string; replacesCardId?: string },
-) {
-  await requireKyc(userId, 'card');
-  if (p.form === "PHYSICAL" && (!p.deliveryAddress || p.deliveryAddress.trim().length < 8)) {
-    throw new BankError("BAD_ADDRESS", "Please give a full delivery address for the physical card.");
-  }
-  let label = "Crypto";
-  let accountId: string | null = null;
-  if (p.kind === "DEBIT") {
-    if (!p.accountId) throw new BankError("NO_ACCOUNT", "Which account should the card be linked to?");
-    const acc = await ownedAccount(db, userId, p.accountId);
-    label = acc.name.replace(/ Account$/i, "");
-    accountId = acc.id;
-  }
-  if (p.replacesCardId) {
-    const old = await ownedCard(userId, p.replacesCardId);
-    await db.update(S.cards).set({ status: "BLOCKED" }).where(eq(S.cards.id, old.id));
-  }
-  const exp = new Date();
-  exp.setFullYear(exp.getFullYear() + 4);
-  const last4 = String(Math.floor(1000 + Math.random() * 9000));
-  const [row] = await db.insert(S.cards).values({
-    userId, accountId, label, last4,
-    brand: p.kind === "CRYPTO" ? "CRYPTO" : "VISA",
-    kind: p.kind, form: p.form,
-    expiry: `${String(exp.getMonth() + 1).padStart(2, "0")}/${String(exp.getFullYear()).slice(2)}`,
-    status: p.form === "PHYSICAL" ? "ORDERED" : "ACTIVE",
-    dailyLimit: "5000.00", monthlyLimit: "50000.00",
-    deliveryAddress: p.form === "PHYSICAL" ? p.deliveryAddress!.trim() : null,
-  }).returning();
-  return row;
+export async function orderCard(userId:string,p:{kind:'DEBIT'|'CRYPTO';accountId?:string;form:'VIRTUAL'|'PHYSICAL';deliveryAddress?:string;replacesCardId?:string;createCryptoAccount?:boolean}){
+ if(p.form==='PHYSICAL'&&(!p.deliveryAddress||p.deliveryAddress.trim().length<8))throw new BankError('BAD_ADDRESS','Give the full delivery address for this simulated physical-card order.');
+ return db.transaction(async tx=>{
+  await tx.execute(sql`SELECT id FROM users WHERE id=${userId} FOR UPDATE`);await requireKyc(userId,'card',0,tx);
+  let account;
+  if(p.accountId){[account]=await tx.select().from(S.accounts).where(and(eq(S.accounts.id,p.accountId),eq(S.accounts.userId,userId))).for('update');}
+  else if(p.kind==='CRYPTO'){[account]=await tx.select().from(S.accounts).where(and(eq(S.accounts.userId,userId),eq(S.accounts.type,'CRYPTO'),eq(S.accounts.status,'ACTIVE'))).orderBy(S.accounts.createdAt).limit(1);if(!account&&p.createCryptoAccount){await requireKyc(userId,'open_account',0,tx);[account]=await tx.insert(S.accounts).values({userId,type:'CRYPTO',currency:'LSL',name:'Crypto sandbox account',number:await newAccountNumber(tx,'CRYPTO')}).returning();}}
+  if(!account)throw new BankError(p.kind==='CRYPTO'?'CRYPTO_ACCOUNT_REQUIRED':'NO_ACCOUNT',p.kind==='CRYPTO'?'Create a simulated crypto account first, then choose virtual or physical card.':'Select your transactional or savings account.',409);
+  if(account.status!=='ACTIVE'||!compatibleCardAccount(p.kind,account.type))throw new BankError('CARD_ACCOUNT_INCOMPATIBLE','Choose a crypto account for a crypto card, or a transactional/savings account for a debit card.',422);
+  const existing=await tx.select({form:S.cards.form}).from(S.cards).where(and(eq(S.cards.accountId,account.id),isNull(S.cards.archivedAt)));
+  if(!cardFormAllowed(existing.map(c=>c.form),p.form,account.allowMixedCardForms))throw new BankError('CARD_FORM_APPROVAL_REQUIRED','This account already uses '+existing[0].form.toLowerCase()+' cards. Choose the same form or ask an administrator to approve mixed virtual and physical cards.',409);
+  if(p.replacesCardId){const [old]=await tx.select().from(S.cards).where(and(eq(S.cards.id,p.replacesCardId),eq(S.cards.userId,userId),isNull(S.cards.archivedAt))).for('update');if(!old||old.accountId!==account.id||old.kind!==p.kind)throw new BankError('CARD_REPLACEMENT_MISMATCH','Replace a card on the same account and in the same category.',422);await tx.update(S.cards).set({status:'BLOCKED'}).where(eq(S.cards.id,old.id));}
+  const exp=new Date();exp.setFullYear(exp.getFullYear()+4);const [card]=await tx.insert(S.cards).values({userId,accountId:account.id,label:account.name.replace(/ Account$/i,''),last4:String(randomInt(1000,10000)),brand:p.kind==='CRYPTO'?'CRYPTO':'VISA',kind:p.kind,form:p.form,expiry:String(exp.getMonth()+1).padStart(2,'0')+'/'+String(exp.getFullYear()).slice(2),status:p.form==='PHYSICAL'?'ORDERED':'ACTIVE',dailyLimit:'5000.00',monthlyLimit:'50000.00',deliveryAddress:p.form==='PHYSICAL'?p.deliveryAddress!.trim():null}).returning();return card;
+ });
 }
 
 /* -------------------------------------------------------------- scheduled */

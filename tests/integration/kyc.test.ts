@@ -6,14 +6,17 @@ import {db,schema} from '../../db';
 import {submitKyc,requireKyc,kycState} from '../../lib/kyc';
 import {internalTransfer,createScheduled,addBeneficiary,setCardStatus} from '../../lib/banking';
 const id=`integration-${randomBytes(6).toString('hex')}`;
-test('real service calls block missing/expired evidence, and submissions cannot verify themselves',async()=>{
+test('fictional demo policy allows declared low-risk checks but enforces missing and expired evidence',async()=>{
  process.env.DEMO_MODE='true';
  await db.insert(schema.users).values({id,email:`${id}@test.invalid`,passwordHash:'unused',firstName:'Test',lastName:'Only'});
  await assert.rejects(()=>requireKyc(id,'open_account'),(e:any)=>e.code==='KYC_REQUIRED');
  await submitKyc(id,{legalName:'Test Only',email:'test@example.invalid',dateOfBirth:'1990-01-01',nationality:'Test'});
  assert.deepEqual((await kycState(id))?.verified,[]);
- await assert.rejects(()=>requireKyc(id,'payment',1),(e:any)=>e.code==='KYC_REQUIRED');
- await assert.rejects(()=>addBeneficiary(id,{name:'Test Recipient',bankName:'Other Bank',accountNumber:'12345678'}),(e:any)=>e.code==='KYC_REQUIRED');
+ // In fictional demo mode, declarations may drive the simulation, but never mutate verified evidence.
+ await requireKyc(id,'payment',1);
+ assert.deepEqual((await kycState(id))?.verified,[]);
+ const beneficiary=await addBeneficiary(id,{name:'Test Recipient',bankName:'Other Bank',accountNumber:'12345678'});
+ assert.equal(beneficiary.name,'Test Recipient');
  await assert.rejects(()=>createScheduled(id,{fromAccountId:'unused',cents:1,frequency:'ONCE',startDate:new Date(),billerId:'unused'}),(e:any)=>e.code==='KYC_REQUIRED');
  await db.update(schema.kycProfiles).set({verified:['contact','identity'],validUntil:new Date(Date.now()+60_000)}).where(eq(schema.kycProfiles.userId,id));
  await requireKyc(id,'payment',99_999);
@@ -21,8 +24,8 @@ test('real service calls block missing/expired evidence, and submissions cannot 
  await submitKyc(id,{email:'changed@example.invalid'});
  assert.deepEqual((await kycState(id))?.verified,['identity']);
  await db.update(schema.kycProfiles).set({verified:['contact','identity'],validUntil:new Date(Date.now()-1)}).where(eq(schema.kycProfiles.userId,id));
- await assert.rejects(()=>requireKyc(id,'payment',1),(e:any)=>e.code==='KYC_REQUIRED');
+ await assert.rejects(()=>requireKyc(id,'cross_border',1),(e:any)=>e.code==='KYC_REQUIRED');
  process.env.DEMO_MODE='false';
  await assert.rejects(()=>requireKyc(id,'payment',1),(e:any)=>e.code==='POLICY_NOT_APPROVED');
 });
-after(async()=>{await db.delete(schema.kycEvents).where(eq(schema.kycEvents.userId,id));await db.delete(schema.kycProfiles).where(eq(schema.kycProfiles.userId,id));await db.delete(schema.users).where(eq(schema.users.id,id));await db.execute(sql`SELECT 1`);await (globalThis as any).__cbPool?.end();});
+after(async()=>{await db.delete(schema.kycEvents).where(eq(schema.kycEvents.userId,id));await db.delete(schema.kycProfiles).where(eq(schema.kycProfiles.userId,id));await db.delete(schema.beneficiaries).where(eq(schema.beneficiaries.userId,id));await db.delete(schema.users).where(eq(schema.users.id,id));await db.execute(sql`SELECT 1`);await (globalThis as any).__cbPool?.end();});

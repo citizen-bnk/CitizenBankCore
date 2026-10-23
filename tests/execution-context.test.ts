@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dataScope, demoDatabaseUrl, scopeFromVerifiedClaim, withDataScope } from "../lib/demo-scope";
+import { dataScope, demoDatabaseUrl, scopeFromVerifiedClaim, withDataScope } from "../lib/execution-context";
 
 test("concurrent requests retain their own database scope and restore live after errors", async () => {
   const prior = process.env.DEMO_MODE;
