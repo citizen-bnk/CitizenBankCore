@@ -41,12 +41,6 @@ test('HTTP access: limited entry, passkey unlock, replay rejection, denied self-
   assert.equal((await request('/api/auth/passkey/verify',{purpose:'login',response:assertion})).status,200);
   assert.equal((await request('/api/me')).body.user.id,userId);
   const saved=[...jar].map(([k,v])=>`${k}=${v}`).join('; ');
-  await withDataScope('demo',()=>db.update(schema.authSessions).set({authenticatedAt:new Date(Date.now()-360_000)}).where(eq(schema.authSessions.userId,userId)));
-  assert.equal((await request('/api/accounts/open',{})).body.code,'REAUTH_REQUIRED');
-  await withDataScope('demo',()=>db.update(schema.authSessions).set({lastSeenAt:new Date(Date.now()-360_000)}).where(eq(schema.authSessions.userId,userId)));
-  assert.equal((await request('/api/me')).status,401);
-  assert.equal((await request('/api/auth/logout',{},saved)).status,200);
-  assert.equal((await request('/api/me',undefined,saved)).status,401);
   const adminToken=randomBytes(32).toString('hex');
   await withDataScope('demo',async()=>{
    await db.insert(schema.users).values({id:adminId,email:`${adminId}@test.invalid`,passwordHash:'unusable',firstName:'Demo',lastName:'Administrator'});
@@ -55,12 +49,19 @@ test('HTTP access: limited entry, passkey unlock, replay rejection, denied self-
   });
   assert.equal((await request('/api/auth/activate-admin',{token:'0'.repeat(64),password:'SyntheticAdminPassword123!'})).status,401);
   assert.equal((await request('/api/auth/activate-admin',{token:adminToken,password:'SyntheticAdminPassword123!'})).status,200);
+  const adminSaved=[...jar].map(([k,v])=>`${k}=${v}`).join('; ');
   assert.ok((await request('/api/me')).body.user.roles.includes('SUPER_ADMIN'));
   assert.equal((await request('/api/auth/activate-admin',{token:adminToken,password:'SyntheticAdminPassword123!'})).status,401);
+  await withDataScope('demo',()=>db.update(schema.authSessions).set({authenticatedAt:new Date(Date.now()-360_000)}).where(eq(schema.authSessions.userId,userId)));
+  assert.equal((await request('/api/accounts/open',{},saved)).body.code,'REAUTH_REQUIRED');
+  await withDataScope('demo',()=>db.update(schema.authSessions).set({lastSeenAt:new Date(Date.now()-360_000)}).where(eq(schema.authSessions.userId,userId)));
+  assert.equal((await request('/api/me',undefined,saved)).status,401);
   assert.equal((await request('/api/kyc/review')).status,200);
   const profile=await withDataScope('demo',async()=>(await db.select().from(schema.kycProfiles).where(eq(schema.kycProfiles.userId,userId)))[0]);
   assert.equal((await request('/api/kyc/review',{userId,submittedAt:profile.updatedAt.toISOString(),decision:'approve',evidence:['contact','identity'],reference:'synthetic-test-evidence',demoOnly:true})).status,200);
   assert.deepEqual(await withDataScope('demo',async()=>(await db.select().from(schema.kycProfiles).where(eq(schema.kycProfiles.userId,userId)))[0].verified),['contact','identity']);
+  assert.equal((await request('/api/auth/logout',{},adminSaved)).status,200);
+  assert.equal((await request('/api/me',undefined,adminSaved)).status,401);
  }catch(e){console.error(logs);throw e;}finally{
   child.kill('SIGTERM');
   await withDataScope('demo',async()=>{
