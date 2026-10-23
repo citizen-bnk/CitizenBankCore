@@ -60,11 +60,13 @@ test('HTTP access: limited entry, passkey unlock, replay rejection, denied self-
   assert.equal((await request('/api/kyc/review')).status,200);
   const profile=await withDataScope('demo',async()=>(await db.select().from(schema.kycProfiles).where(eq(schema.kycProfiles.userId,userId)))[0]);
   assert.equal((await request('/api/kyc/review',{userId,submittedAt:profile.updatedAt.toISOString(),decision:'approve',evidence:['contact','identity'],reference:'synthetic-test-evidence',demoOnly:true})).status,200);
-  assert.deepEqual((await db.select().from(schema.kycProfiles).where(eq(schema.kycProfiles.userId,userId)))[0].verified,['contact','identity']);
+  assert.deepEqual(await withDataScope('demo',async()=>(await db.select().from(schema.kycProfiles).where(eq(schema.kycProfiles.userId,userId)))[0].verified),['contact','identity']);
  }catch(e){console.error(logs);throw e;}finally{
   child.kill('SIGTERM');
-  if(userId){await db.delete(schema.authSessions).where(eq(schema.authSessions.userId,userId));await db.delete(schema.authChallenges).where(eq(schema.authChallenges.userId,userId));await db.delete(schema.passkeys).where(eq(schema.passkeys.userId,userId));await db.delete(schema.kycEvents).where(eq(schema.kycEvents.userId,userId));await db.delete(schema.kycProfiles).where(eq(schema.kycProfiles.userId,userId));await db.delete(schema.users).where(eq(schema.users.id,userId));}
-  await db.delete(schema.authSessions).where(eq(schema.authSessions.userId,adminId));await db.delete(schema.adminInvites).where(eq(schema.adminInvites.userId,adminId));await db.delete(schema.kycEvents).where(eq(schema.kycEvents.userId,adminId));await db.delete(schema.users).where(eq(schema.users.id,adminId));
+  await withDataScope('demo',async()=>{
+   if(userId){await db.delete(schema.authSessions).where(eq(schema.authSessions.userId,userId));await db.delete(schema.authChallenges).where(eq(schema.authChallenges.userId,userId));await db.delete(schema.passkeys).where(eq(schema.passkeys.userId,userId));await db.delete(schema.kycEvents).where(eq(schema.kycEvents.userId,userId));await db.delete(schema.kycProfiles).where(eq(schema.kycProfiles.userId,userId));await db.delete(schema.users).where(eq(schema.users.id,userId));}
+   await db.delete(schema.authSessions).where(eq(schema.authSessions.userId,adminId));await db.delete(schema.adminInvites).where(eq(schema.adminInvites.userId,adminId));await db.delete(schema.kycEvents).where(eq(schema.kycEvents.userId,adminId));await db.delete(schema.users).where(eq(schema.users.id,adminId));
+  });
   await (globalThis as any).__cbPool?.end();
  }
 });
