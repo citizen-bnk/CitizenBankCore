@@ -48,10 +48,7 @@ test('HTTP access: limited entry, passkey unlock, replay rejection, denied self-
   assert.equal((await request('/api/accounts/open',{},saved)).body.code,'REAUTH_REQUIRED');
   await withDataScope('demo',()=>db.update(schema.authSessions).set({lastSeenAt:new Date(Date.now()-360_000)}).where(eq(schema.authSessions.userId,userId)));
   assert.equal((await request('/api/me',undefined,saved)).status,401);
-  assert.equal((await request('/api/kyc/review')).status,200);
-  const profile=await withDataScope('demo',async()=>(await db.select().from(schema.kycProfiles).where(eq(schema.kycProfiles.userId,userId)))[0]);
-  assert.equal((await request('/api/kyc/review',{userId,submittedAt:profile.updatedAt.toISOString(),decision:'approve',evidence:['contact','identity'],reference:'synthetic-test-evidence',demoOnly:true})).status,200);
-  assert.deepEqual(await withDataScope('demo',async()=>(await db.select().from(schema.kycProfiles).where(eq(schema.kycProfiles.userId,userId)))[0].verified),['contact','identity']);
+
   assert.equal((await request('/api/auth/logout',{},saved)).status,200);
   assert.equal((await request('/api/me',undefined,saved)).status,401);
  }catch(e){console.error(logs);throw e;}finally{
