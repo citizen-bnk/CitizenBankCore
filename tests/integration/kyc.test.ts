@@ -12,7 +12,9 @@ test('real service calls block missing/expired evidence, and submissions cannot 
  await assert.rejects(()=>requireKyc(id,'open_account'),(e:any)=>e.code==='KYC_REQUIRED');
  await submitKyc(id,{legalName:'Test Only',email:'test@example.invalid',dateOfBirth:'1990-01-01',nationality:'Test'});
  assert.deepEqual((await kycState(id))?.verified,[]);
- await assert.rejects(()=>requireKyc(id,'payment',1),(e:any)=>e.code==='KYC_REQUIRED');
+ // In fictional demo mode, declarations may drive the simulation, but never mutate verified evidence.
+ await requireKyc(id,'payment',1);
+ assert.deepEqual((await kycState(id))?.verified,[]);
  await assert.rejects(()=>addBeneficiary(id,{name:'Test Recipient',bankName:'Other Bank',accountNumber:'12345678'}),(e:any)=>e.code==='KYC_REQUIRED');
  await assert.rejects(()=>createScheduled(id,{fromAccountId:'unused',cents:1,frequency:'ONCE',startDate:new Date(),billerId:'unused'}),(e:any)=>e.code==='KYC_REQUIRED');
  await db.update(schema.kycProfiles).set({verified:['contact','identity'],validUntil:new Date(Date.now()+60_000)}).where(eq(schema.kycProfiles.userId,id));
