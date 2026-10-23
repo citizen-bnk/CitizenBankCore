@@ -27,7 +27,7 @@ const at = (offset: number) => new Date((NOW + offset) * 1000);
 async function sign(over: Record<string, unknown> = {}, opts: { key?: CryptoKey; alg?: string; kid?: string } = {}) {
   const claims = {
     iss: ISS, aud: "banking", sub: "person-1", jti: "jti-1", iat: NOW, nbf: NOW, exp: NOW + 60,
-    use: "handoff", roles: ["customer"], name: "Demo Customer", email: "Demo@Example.test", ...over,
+    use: "handoff", roles: ["customer"], name: "Demo Customer", email: "Demo@Example.test", phone: "+266 5800 1234", ...over,
   };
   const payload = Object.fromEntries(Object.entries(claims).filter(([, v]) => v !== undefined));
   return new SignJWT(payload).setProtectedHeader({ alg: opts.alg ?? "ES256", kid: opts.kid ?? "k1" })
@@ -56,7 +56,11 @@ test("a token signed by the website's Python signer verifies in Core (cross-lang
 test("a valid token is accepted and its claims are normalised", async () => {
   const c = await verifyHandoff(await sign(), cfg, publicKey, at(5));
   assert.deepEqual([c.personId, c.jti, c.email, c.name, c.roles], ["person-1", "jti-1", "demo@example.test", "Demo Customer", ["customer"]]);
+  assert.equal(c.phone, "+266 5800 1234");
   assert.equal(c.scope, "live");
+  const legacy = await verifyHandoff(await sign({ phone: undefined }), cfg, publicKey, at(5));
+  assert.equal(legacy.phone, undefined);
+  await rejects(verifyHandoff(await sign({ phone: "x".repeat(31) }), cfg, publicKey, at(5)));
 });
 
 test("only a verified signed scope selects demo, and disabling it rejects old handoffs", async () => {
