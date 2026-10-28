@@ -104,7 +104,7 @@ const isUniqueViolation = (e: unknown) =>
 
 /** The Core user for this person, created on first visit. Never adopts a profile just because the email matches. */
 export async function userForHandoff(claims: HandoffClaims, opts: { demo: boolean }) {
-  if (!claims.roles.includes("customer")) {
+  if (!claims.roles.some((role) => role === "customer" || role === "investor" || role === "shareholder")) {
     throw new BankError("SSO_NOT_CUSTOMER", "Your account does not include banking.", 403);
   }
   const byPerson = async () =>
