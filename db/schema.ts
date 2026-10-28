@@ -49,6 +49,11 @@ export const users = pgTable("users", {
   preferredTheme: varchar("preferred_theme", { length: 10 }).notNull().default("dark"),
   /** Platform person this user was provisioned for through single sign-on (null for password-only users). */
   personId: varchar("person_id", { length: 64 }).unique(),
+  /** Self-declared KYC fields are separate from an officer's verification decision. */
+  kycProfile: jsonb("kyc_profile").$type<Record<string, string>>().notNull().default({}),
+  kycStatus: varchar("kyc_status", { length: 20 }).notNull().default("NOT_STARTED"),
+  kycReviewedAt: timestamp("kyc_reviewed_at", { withTimezone: true }),
+  kycReviewedBy: text("kyc_reviewed_by"),
   suspended: boolean("suspended").notNull().default(false),
   failedLogins: integer("failed_logins").notNull().default(0),
   lockedUntil: timestamp("locked_until", { withTimezone: true }),

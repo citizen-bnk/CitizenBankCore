@@ -31,6 +31,8 @@ export async function openCustomer(input: {
   firstName: string; lastName: string; email: string; phone?: string; password: string; openingDepositCents?: number;
   /** Set when the profile is created for a platform person (single sign-on). */
   personId?: string;
+  /** Investor banking products remain visible but unusable until KYC approval. */
+  investorDormant?: boolean;
 }) {
   const [dup] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, input.email)).limit(1);
   if (dup) throw new BankError("EMAIL_TAKEN", "An account with this email already exists. Try signing in instead.", 409);
@@ -43,19 +45,23 @@ export async function openCustomer(input: {
     }).returning();
 
     const [current] = await tx.insert(schema.accounts).values({
-      userId: user.id, name: "Current Account", type: "CURRENT", number: await newAccountNumber(tx, "CURRENT"),
+      userId: user.id, name: input.investorDormant ? "Cheque Account" : "Current Account", type: "CURRENT", number: await newAccountNumber(tx, "CURRENT"),
+      status: input.investorDormant ? "DORMANT" : "ACTIVE",
     }).returning();
     await tx.insert(schema.accounts).values({
       userId: user.id, name: "Savings Account", type: "SAVINGS", number: await newAccountNumber(tx, "SAVINGS"), interestRate: "4.50",
+      status: input.investorDormant ? "DORMANT" : "ACTIVE",
     });
-    const exp = new Date(); exp.setFullYear(exp.getFullYear() + 4);
-    await tx.insert(schema.cards).values({
+    if (!input.investorDormant) {
+      const exp = new Date(); exp.setFullYear(exp.getFullYear() + 4);
+      await tx.insert(schema.cards).values({
       userId: user.id, accountId: current.id, label: "Current", last4: current.number.slice(-4), brand: "VISA",
       kind: "DEBIT", form: "VIRTUAL", expiry: `${String(exp.getMonth() + 1).padStart(2, "0")}/${String(exp.getFullYear()).slice(2)}`,
       dailyLimit: "5000.00", monthlyLimit: "50000.00",
-    });
+      });
+    }
 
-    if (input.openingDepositCents && input.openingDepositCents > 0) {
+    if (!input.investorDormant && input.openingDepositCents && input.openingDepositCents > 0) {
       const suspense = await systemAccount(tx, "DEMO_FUNDING");
       await postTransaction(tx, {
         type: "DEPOSIT",
@@ -68,7 +74,11 @@ export async function openCustomer(input: {
       });
     }
     await tx.insert(schema.notifications).values({
-      userId: user.id, title: "Welcome to Citizen Bank", body: "Your current and savings accounts are open, and a virtual debit card is ready to use.",
+      userId: user.id,
+      title: input.investorDormant ? "Activate your banking accounts" : "Welcome to Citizen Bank",
+      body: input.investorDormant
+        ? "Your cheque and savings accounts are visible but dormant. Complete identity checks in your profile to request activation. Banking is demonstration-only before licensing."
+        : "Your current and savings accounts are open, and a virtual debit card is ready to use.",
     });
     return user;
   });
