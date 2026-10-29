@@ -9,12 +9,14 @@ export type ChatMessage = { role: "user" | "assistant"; content: string };
 export type AssistantInput = { messages: ChatMessage[]; language?: string;
   image?: { mediaType: string; data: string }; location?: { lat: number; lng: number } };
 export type AssistantReply = { reply: string; provider?: "anthropic" | "openai";
-  action?: { flow: (typeof FLOWS)[number]; prefill: Record<string, string> } };
+  action?: { flow: (typeof FLOWS)[number]; prefill: Record<string, string> };
+  profileSuggestion?: { field: string; value: string } };
 type Context = { input: AssistantInput; system: string; tools: Anthropic.Tool[];
   runTool: (name: string, input: Record<string, unknown>) => Promise<unknown> };
 type Dependencies = { fetch?: typeof fetch; anthropic?: (key: string) => Anthropic };
 const proposal = z.object({ flow: z.enum(FLOWS), say: z.string().trim().min(1).max(1200),
   prefill: z.record(z.unknown()).optional() });
+const profileProposal = z.object({ field: z.string(), value: z.string().trim().min(1).max(150), say: z.string().trim().min(1).max(1200) });
 const MAX_ROUNDS = 5;
 
 function action(input: unknown): AssistantReply {
@@ -27,13 +29,17 @@ function action(input: unknown): AssistantReply {
   // Returning this proposal never executes a mutation. Clients still require confirmation.
   return { reply: p.say, action: { flow: p.flow, prefill } };
 }
+function profileAction(input: unknown): AssistantReply {
+  const p = profileProposal.parse(input);
+  return { reply: p.say, profileSuggestion: { field: p.field, value: p.value } };
+}
 function timeout(deadline: number) {
   const remaining = deadline - Date.now();
   if (remaining <= 0) throw new Error("Provider deadline exceeded");
   return Math.min(12_000, remaining);
 }
 async function readTool(ctx: Context, name: string, input: unknown) {
-  if (name === "propose_action" || !ctx.tools.some((t) => t.name === name))
+  if (name === "propose_action" || name === "propose_profile_detail" || !ctx.tools.some((t) => t.name === name))
     return { error: "Unknown read-only tool" };
   if (!input || typeof input !== "object" || Array.isArray(input)) return { error: "Invalid tool arguments" };
   try { return await ctx.runTool(name, input as Record<string, unknown>); }
@@ -53,6 +59,8 @@ async function anthropic(ctx: Context, cfg: AIConfig, deadline: number, deps: De
     const calls = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
     const proposed = calls.find((c) => c.name === "propose_action");
     if (proposed) return action(proposed.input);
+    const profile = calls.find((c) => c.name === "propose_profile_detail");
+    if (profile) return profileAction(profile.input);
     if (!calls.length) {
       if (!text) throw new Error("Empty provider reply");
       return { reply: text };
@@ -92,6 +100,8 @@ async function openai(ctx: Context, cfg: AIConfig, deadline: number, deps: Depen
     const calls = res.output.filter((o) => o.type === "function_call");
     const proposed = calls.find((c) => c.name === "propose_action");
     if (proposed) return action(JSON.parse(proposed.arguments ?? "{}"));
+    const profile = calls.find((c) => c.name === "propose_profile_detail");
+    if (profile) return profileAction(JSON.parse(profile.arguments ?? "{}"));
     if (!calls.length) {
       const text = content.filter((c) => c.type === "output_text").map((c) => c.text ?? "").join(" ").trim();
       if (!text) throw new Error("Empty provider reply");

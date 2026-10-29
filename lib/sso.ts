@@ -104,7 +104,7 @@ const isUniqueViolation = (e: unknown) =>
 
 /** The Core user for this person, created on first visit. Never adopts a profile just because the email matches. */
 export async function userForHandoff(claims: HandoffClaims, opts: { demo: boolean }) {
-  if (!claims.roles.includes("customer")) {
+  if (!claims.roles.some((role) => role === "customer" || role === "investor" || role === "shareholder")) {
     throw new BankError("SSO_NOT_CUSTOMER", "Your account does not include banking.", 403);
   }
   const byPerson = async () =>
@@ -126,6 +126,7 @@ export async function userForHandoff(claims: HandoffClaims, opts: { demo: boolea
         ...splitName(claims.name, claims.email), email: claims.email, personId: claims.personId,
         password: randomBytes(32).toString("base64url"), // nobody knows it: this profile signs in through the website only
         openingDepositCents: opts.demo ? DEMO_OPENING_DEPOSIT_CENTS : 0,
+        investorDormant: claims.roles.some((role) => role === "investor" || role === "shareholder"),
       });
     } catch (e) {
       // Two first-time visits at once: the other one won, use its profile.

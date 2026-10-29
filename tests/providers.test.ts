@@ -62,6 +62,14 @@ test("payment requests return only a sanitized proposal and never run a payment 
   assert.equal(executed, false);
   assert.deepEqual(result.action, { flow: "sendMoney", prefill: { beneficiary: "Thabo", amount: "200" } });
 });
+test("profile detail is proposed for explicit confirmation and never saved by the provider", async () => {
+  let mutated = false;
+  const result = await answerWithFailover(context(async () => { mutated = true; }), { ...config(), anthropic: undefined }, {
+    fetch: async () => json([call("propose_profile_detail", { field: "employmentStatus", value: "full-time", say: "Save full-time employment to your profile?" })]),
+  });
+  assert.equal(mutated, false);
+  assert.deepEqual(result.profileSuggestion, { field: "employmentStatus", value: "full-time" });
+});
 test("unknown provider tool names cannot invoke a banking mutation", async () => {
   let executed = false; let round = 0;
   await answerWithFailover(context(async () => { executed = true; }), { ...config(), anthropic: undefined }, {
