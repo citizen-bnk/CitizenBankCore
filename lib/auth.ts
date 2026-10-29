@@ -18,7 +18,8 @@ function secret() {
   return new TextEncoder().encode(s);
 }
 
-export type Session = { userId: string; roles: string[] };
+export type Session = { userId: string; roles: string[]; startedAt?: number };
+const IDLE_TTL_SECONDS = 10 * 60;
 
 export async function hashPassword(pw: string) {
   return bcrypt.hash(pw, 12);
@@ -28,11 +29,13 @@ export async function verifyPassword(pw: string, hash: string) {
 }
 
 export async function createSessionToken(s: Session) {
-  return new SignJWT({ roles: s.roles })
+  const now = Math.floor(Date.now() / 1000);
+  const startedAt = s.startedAt ?? now;
+  return new SignJWT({ roles: s.roles, startedAt })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(s.userId)
-    .setIssuedAt()
-    .setExpirationTime(`${SESSION_TTL_SECONDS}s`)
+    .setIssuedAt(now)
+    .setExpirationTime(startedAt + SESSION_TTL_SECONDS)
     .sign(secret());
 }
 
@@ -40,8 +43,8 @@ export async function verifySessionToken(token: string | undefined): Promise<Ses
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secret(), { algorithms: ["HS256"] });
-    if (!payload.sub) return null;
-    return { userId: payload.sub, roles: (payload.roles as string[]) ?? [] };
+    if (!payload.sub || !payload.iat || Date.now() / 1000 - payload.iat > IDLE_TTL_SECONDS) return null;
+    return { userId: payload.sub, roles: (payload.roles as string[]) ?? [], startedAt: typeof payload.startedAt === "number" ? payload.startedAt : payload.iat };
   } catch {
     return null;
   }
@@ -49,12 +52,13 @@ export async function verifySessionToken(token: string | undefined): Promise<Ses
 
 export async function setSessionCookie(s: Session) {
   const token = await createSessionToken(s);
+  const remaining = Math.max(0, (s.startedAt ?? Math.floor(Date.now() / 1000)) + SESSION_TTL_SECONDS - Math.floor(Date.now() / 1000));
   (await cookies()).set(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: SESSION_TTL_SECONDS,
+    maxAge: remaining,
   });
 }
 

@@ -54,6 +54,8 @@ export const users = pgTable("users", {
   kycStatus: varchar("kyc_status", { length: 20 }).notNull().default("NOT_STARTED"),
   kycReviewedAt: timestamp("kyc_reviewed_at", { withTimezone: true }),
   kycReviewedBy: text("kyc_reviewed_by"),
+  /** Daily, optional profile question budget shared by banking clients. */
+  profilePromptState: jsonb("profile_prompt_state").$type<{ day: string; answered: number; deferred: boolean; suppressed?: string[] }>().notNull().default({ day: "", answered: 0, deferred: false, suppressed: [] }),
   suspended: boolean("suspended").notNull().default(false),
   failedLogins: integer("failed_logins").notNull().default(0),
   lockedUntil: timestamp("locked_until", { withTimezone: true }),

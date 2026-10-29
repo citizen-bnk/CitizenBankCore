@@ -22,6 +22,13 @@
       "when": 1793145600000,
       "tag": "0002_kyc",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793232000000,
+      "tag": "0003_profile_prompts",
+      "breakpoints": true
     }
   ]
 }
