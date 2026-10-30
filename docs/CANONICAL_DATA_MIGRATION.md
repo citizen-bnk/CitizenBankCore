@@ -14,6 +14,8 @@ The tracker has been converted to a private 1,117-record JSONL snapshot at `depl
 
 The pack's shareholding document `02-2_Shareholding_Structure_and_Cap_Table.pdf` lists 90,445,300 issued ordinary shares and 20 members but labels its register **uncertified** and lists eight reconciliation tasks. Its pending SAFE conversions and unpaid subscriptions must not be added to issued shares. Do not infer paid-up regulatory capital from subscribed amounts, certificates or a planning target.
 
+The eight register tasks concern a holding vehicle's legal identity and transfer evidence, a duplicated identity number, unpaid consideration, a nominee transfer, founder-funded gift instruments and tax treatment, missing subscription/identity evidence, legal review of historical issue prices, and returns of allotment. The new ledger must present these as unresolved issues until the Company Secretary verifies them against source records.
+
 ## Current data landscape
 
 | System | Existing production/demo data domain | Migration treatment |
