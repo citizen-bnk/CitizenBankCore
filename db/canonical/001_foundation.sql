@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS platform.legal_entities (
   legal_name text NOT NULL,
   registration_number text NOT NULL UNIQUE,
   jurisdiction text NOT NULL,
-  applicant_status text NOT NULL CHECK (applicant_status IN ('intended_applicant','applicant','licensed','inactive')),
+  applicant_status text NOT NULL CHECK (applicant_status IN ('intended_applicant','applicant','licensed','non_applicant','inactive')),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -83,6 +83,23 @@ CREATE TABLE IF NOT EXISTS corporate.holders (
   CHECK ((person_id IS NULL) <> (legal_entity_id IS NULL))
 );
 
+CREATE TABLE IF NOT EXISTS corporate.beneficial_interests (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_id uuid NOT NULL REFERENCES platform.legal_entities(id),
+  holder_id uuid NOT NULL REFERENCES corporate.holders(id),
+  beneficial_person_id uuid NOT NULL REFERENCES platform.people(id),
+  ownership_percent numeric(7,4) CHECK (ownership_percent BETWEEN 0 AND 100),
+  control_basis text NOT NULL,
+  effective_from date NOT NULL,
+  effective_to date,
+  review_state text NOT NULL CHECK (review_state IN ('pending','verified','superseded')),
+  evidence_document_id uuid,
+  source_record_id uuid REFERENCES platform.source_records(id),
+  CHECK (effective_to IS NULL OR effective_to >= effective_from)
+);
+CREATE INDEX IF NOT EXISTS beneficial_interests_entity_person_idx
+  ON corporate.beneficial_interests(entity_id, beneficial_person_id);
+
 -- Each confirmed issue, transfer, redemption or correction is represented by
 -- balanced entries; pending/unreconciled legacy rows never affect legal holdings.
 CREATE TABLE IF NOT EXISTS corporate.share_events (
@@ -112,6 +129,8 @@ CREATE TABLE IF NOT EXISTS corporate.share_event_entries (
   -- NULL holder is the unissued treasury balance. All event entries must sum to zero.
   UNIQUE(event_id, holder_id)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS share_event_one_unissued_entry_idx
+  ON corporate.share_event_entries(event_id) WHERE holder_id IS NULL;
 
 -- A confirmed event must conserve shares between holders and the unissued
 -- balance. Pending legacy evidence can be entered before it is reconciled.
@@ -254,6 +273,25 @@ CREATE TABLE IF NOT EXISTS documents.versions (
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(document_id, version_number)
 );
+CREATE TABLE IF NOT EXISTS corporate.shareholder_agreements (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_id uuid NOT NULL REFERENCES platform.legal_entities(id),
+  agreement_type text NOT NULL CHECK (agreement_type IN ('master','accession','amendment','transfer','bonus_allocation')),
+  document_id uuid NOT NULL REFERENCES documents.records(id),
+  version_id uuid REFERENCES documents.versions(id),
+  status text NOT NULL CHECK (status IN ('draft','circulated','part_signed','effective','superseded','cancelled')),
+  effective_date date,
+  supersedes_agreement_id uuid REFERENCES corporate.shareholder_agreements(id),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS corporate.agreement_parties (
+  agreement_id uuid NOT NULL REFERENCES corporate.shareholder_agreements(id),
+  holder_id uuid NOT NULL REFERENCES corporate.holders(id),
+  signature_state text NOT NULL CHECK (signature_state IN ('not_requested','requested','authorised','signed','declined')),
+  signed_at timestamptz,
+  PRIMARY KEY (agreement_id, holder_id),
+  CHECK (signed_at IS NULL OR signature_state = 'signed')
+);
 ALTER TABLE corporate.share_classes ADD CONSTRAINT share_classes_rights_document_fk
   FOREIGN KEY (rights_document_id) REFERENCES documents.records(id);
 ALTER TABLE corporate.share_events ADD CONSTRAINT share_events_authority_document_fk
@@ -262,6 +300,8 @@ ALTER TABLE corporate.appointments ADD CONSTRAINT appointments_company_document_
   FOREIGN KEY (company_approval_document_id) REFERENCES documents.records(id);
 ALTER TABLE corporate.appointments ADD CONSTRAINT appointments_regulatory_document_fk
   FOREIGN KEY (regulatory_document_id) REFERENCES documents.records(id);
+ALTER TABLE corporate.beneficial_interests ADD CONSTRAINT beneficial_interests_evidence_fk
+  FOREIGN KEY (evidence_document_id) REFERENCES documents.records(id);
 
 CREATE TABLE IF NOT EXISTS licensing.requirements (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -294,6 +334,14 @@ CREATE TABLE IF NOT EXISTS licensing.submission_snapshots (
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(entity_id, version_number),
   CHECK (status <> 'lodged' OR lodged_at IS NOT NULL)
+);
+CREATE TABLE IF NOT EXISTS licensing.submission_documents (
+  snapshot_id uuid NOT NULL REFERENCES licensing.submission_snapshots(id),
+  document_version_id uuid NOT NULL REFERENCES documents.versions(id),
+  pack_section text NOT NULL,
+  position integer NOT NULL CHECK (position > 0),
+  PRIMARY KEY (snapshot_id, document_version_id),
+  UNIQUE(snapshot_id, position)
 );
 
 CREATE TABLE IF NOT EXISTS platform.audit_events (

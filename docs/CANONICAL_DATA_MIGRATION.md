@@ -33,6 +33,8 @@ The canonical person ID is stable across roles. External logins, Hub users, Core
 
 Confirmed share holdings are derived from dated share events. Legacy rows enter as `pending_reconciliation`; only a reviewed and authorised event changes the legal register. SAFE subscriptions remain contractual investments until the conversion event is recorded. Document records hold storage references, hashes, versions and access classes; file bytes remain in approved private file storage.
 
+Beneficial interests attach the underlying natural person and control basis to each legal holder. Shareholder agreements are separate from SAFE instruments, with versioned documents, parties and signature states. A licensing submission snapshot pins the exact document versions included in the pack.
+
 ## Safe migration sequence
 
 1. Obtain read-only snapshots and verified restore tests for **all three** existing databases. Archive source files and capture row counts, schema fingerprints and source timestamps. Website and Core archives now exist; the Hub archive and restoration rehearsals remain outstanding.
