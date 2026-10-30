@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS platform.legal_entities (
   registration_number text NOT NULL UNIQUE,
   jurisdiction text NOT NULL,
   applicant_status text NOT NULL CHECK (applicant_status IN ('intended_applicant','applicant','licensed','non_applicant','inactive')),
+  applicant_basis_document_id uuid,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -273,6 +274,8 @@ CREATE TABLE IF NOT EXISTS documents.versions (
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(document_id, version_number)
 );
+ALTER TABLE platform.legal_entities ADD CONSTRAINT legal_entities_applicant_basis_fk
+  FOREIGN KEY (applicant_basis_document_id) REFERENCES documents.records(id);
 CREATE TABLE IF NOT EXISTS corporate.shareholder_agreements (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   entity_id uuid NOT NULL REFERENCES platform.legal_entities(id),
@@ -342,6 +345,19 @@ CREATE TABLE IF NOT EXISTS licensing.submission_documents (
   position integer NOT NULL CHECK (position > 0),
   PRIMARY KEY (snapshot_id, document_version_id),
   UNIQUE(snapshot_id, position)
+);
+CREATE TABLE IF NOT EXISTS licensing.correspondence (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_id uuid REFERENCES platform.legal_entities(id),
+  related_promoter_id uuid REFERENCES platform.legal_entities(id),
+  direction text NOT NULL CHECK (direction IN ('inbound','outbound')),
+  subject text NOT NULL,
+  external_reference text,
+  correspondence_date date NOT NULL,
+  document_id uuid NOT NULL REFERENCES documents.records(id),
+  classification text NOT NULL CHECK (classification IN ('pre_application','application','information_request','decision','other')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (entity_id IS NOT NULL OR related_promoter_id IS NOT NULL)
 );
 
 CREATE TABLE IF NOT EXISTS platform.audit_events (
