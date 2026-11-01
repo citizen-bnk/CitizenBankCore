@@ -27,6 +27,19 @@ The eight register tasks concern a holding vehicle's legal identity and transfer
 
 The website and Core databases currently resolve to different Neon endpoints. The website pooled connection was intermittently unavailable; its unpooled endpoint answered a limited count query and completed a backup. The Hub connection is configured in Vercel, but its credential was not retrieved. Therefore no existing production database has been deleted, truncated or replaced. Archive integrity has been checked by reading each archive's table of contents; a full restoration rehearsal remains outstanding.
 
+### Neon resource inventory (1 November 2026)
+
+Read-only queries through the saved website and Core connections confirmed two distinct Neon projects:
+
+| Connection | Database | Application tables | Treatment |
+|---|---|---:|---|
+| Core | `citizen_core_business` | 21 | Existing banking source; preserve and reconcile |
+| Core | `neondb` | 21 | Populated default database; not a migration target |
+| Website | `citizen_platform_business` | 64 | Existing platform source; preserve and reconcile |
+| Website | `neondb` | 23 | Populated default database; not a migration target |
+
+Both projects also have a `postgres` maintenance database with three non-system tables. Neither has a verified empty application database. The Hub Vercel project has a protected `DATABASE_URL`, but Vercel does not expose its value through the available connection and lists no attached database connector. The Hub Neon project and database still require dashboard identification or a secure connection before export. Provision a **dedicated, empty canonical production database** and a separate demo target; do not repurpose either populated `neondb` database. These counts identify resources only and are not a data-reconciliation result.
+
 ## Target contract
 
 Use **one canonical Postgres database per environment**. Production and demonstration remain separate databases or isolated Neon branches. The new database has `platform`, `corporate`, `licensing` and `documents` schemas, plus Core banking tables after a controlled ledger migration. The additive foundation is in `db/canonical/001_foundation.sql`.
