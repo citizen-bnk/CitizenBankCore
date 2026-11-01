@@ -1,6 +1,6 @@
 # Citizen Digital Ltd: canonical data rebuild
 
-Status: prepared, **not applied to production** (29 October 2026).
+Status (1 November 2026): the canonical foundation SQL has been submitted to a new, isolated production-target database. **No application has been switched to it and no source data has been imported.** Post-migration verification and cutover remain pending.
 
 ## Applicant and evidence basis
 
@@ -40,6 +40,8 @@ Read-only queries through the saved website and Core connections confirmed two d
 
 Both projects also have a `postgres` maintenance database with three non-system tables. Neither has a verified empty application database. The Hub Vercel project has a protected `DATABASE_URL`, but Vercel does not expose its value through the available connection and lists no attached database connector. The Hub Neon project and database still require dashboard identification or a secure connection before export. Provision a **dedicated, empty canonical production database** and a separate demo target; do not repurpose either populated `neondb` database. These counts identify resources only and are not a data-reconciliation result.
 
+On 1 November 2026, at the user's direction, `citizen_canonical_production` was created on the `main` branch of the **original Core** Neon project `neon-citizen-bnk-core` (`damp-term-89130008`, AWS US East 1). The existing `neondb` was left untouched. A read-only preflight returned zero application tables in the new database. The SQL Editor then ran the 45 statements in `db/canonical/001_foundation.sql`, including its transaction and applicant seed; the UI reported `Connected (45 queries)` with no error shown. Browser control was disabled before the independent post-migration count and applicant-row query completed, so their results are **unverified**. Run the read-only `db/canonical/verify_foundation.sql` against the new database before importing any source data. The new database has not been connected to Vercel projects. This project is in a different region from the website and demo Core Neon projects, which needs latency and operational review before cutover.
+
 ## Target contract
 
 Use **one canonical Postgres database per environment**. Production and demonstration remain separate databases or isolated Neon branches. The new database has `platform`, `corporate`, `licensing` and `documents` schemas, plus Core banking tables after a controlled ledger migration. The additive foundation is in `db/canonical/001_foundation.sql`.
@@ -55,7 +57,7 @@ Beneficial interests attach the underlying natural person and control basis to e
 ## Safe migration sequence
 
 1. Obtain read-only snapshots and verified restore tests for **all three** existing databases. Archive source files and capture row counts, schema fingerprints and source timestamps. Website and Core archives now exist; the Hub archive and restoration rehearsals remain outstanding.
-2. Provision a fresh production database and a separate demonstration database. Apply `001_foundation.sql` only to the fresh databases. Seed the applicant entity from the designation evidence, with its source document attached.
+2. Verify the newly created `citizen_canonical_production` database and its foundation schema, then provision a separate demonstration database or branch. Attach the applicant designation source document to the seeded entity record; the legal-name seed alone does not establish documentary provenance.
 3. Import website, Hub, Core and Form identities into `platform.source_records`. Match by verified account subject first; queue name/email ambiguities for human review. Preserve old IDs in `platform.external_identities`.
 4. Import the September cap table as **pending** share events and subscriptions. Resolve the eight stated register discrepancies and tie totals to the statutory register, signed instruments and bank evidence before confirmation. Validate no negative holdings, no share-class overissue and no SAFE units counted as issued shares.
 5. Import board nominations and appointments with separate company and regulatory statuses. Import the v2 compliance matrix and all 1,117 tracker items as licensing requirements; preserve the document/version lineage and open status.
