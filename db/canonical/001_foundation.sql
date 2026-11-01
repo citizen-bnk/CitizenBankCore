@@ -198,6 +198,12 @@ BEGIN
     IF EXISTS (SELECT 1 FROM corporate.share_events WHERE id = OLD.event_id AND state = 'confirmed') THEN
       RAISE EXCEPTION 'Confirmed share entries are immutable; record a correction event';
     END IF;
+    -- An UPDATE must not move a pending entry into an already confirmed event.
+    IF TG_OP = 'UPDATE' AND EXISTS (
+      SELECT 1 FROM corporate.share_events WHERE id = NEW.event_id AND state = 'confirmed'
+    ) THEN
+      RAISE EXCEPTION 'Confirmed share entries are immutable; record a correction event';
+    END IF;
   END IF;
   IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
   RETURN NEW;
