@@ -3,6 +3,7 @@ import { db, schema, type Tx } from "@/db";
 import { hashPassword } from "./auth";
 import { BankError } from "./errors";
 import { postTransaction, systemAccount } from "./ledger";
+import { dataScope } from "./execution-context";
 
 const PREFIX = { CURRENT: "10", SAVINGS: "20", FIXED_DEPOSIT: "30", INTERNAL: "90", CRYPTO: "40" } as const;
 
@@ -37,6 +38,7 @@ export async function openCustomer(input: {
   const passwordHash = await hashPassword(input.password);
 
   return db.transaction(async (tx) => {
+    const fictional = dataScope() === "demo" && process.env.DEMO_MODE === "true";
     const [user] = await tx.insert(schema.users).values({
       email: input.email, passwordHash, firstName: input.firstName, lastName: input.lastName, phone: input.phone ?? null,
       personId: input.personId ?? null,
@@ -45,18 +47,22 @@ export async function openCustomer(input: {
     if (input.limited) return user;
     const [current] = await tx.insert(schema.accounts).values({
       userId: user.id, name: "Current Account", type: "CURRENT", number: await newAccountNumber(tx, "CURRENT"),
+      status: fictional ? "ACTIVE" : "DORMANT",
     }).returning();
     await tx.insert(schema.accounts).values({
       userId: user.id, name: "Savings Account", type: "SAVINGS", number: await newAccountNumber(tx, "SAVINGS"), interestRate: "4.50",
+      status: fictional ? "ACTIVE" : "DORMANT",
     });
-    const exp = new Date(); exp.setFullYear(exp.getFullYear() + 4);
-    await tx.insert(schema.cards).values({
+    if (fictional) {
+      const exp = new Date(); exp.setFullYear(exp.getFullYear() + 4);
+      await tx.insert(schema.cards).values({
       userId: user.id, accountId: current.id, label: "Current", last4: current.number.slice(-4), brand: "VISA",
       kind: "DEBIT", form: "VIRTUAL", expiry: `${String(exp.getMonth() + 1).padStart(2, "0")}/${String(exp.getFullYear()).slice(2)}`,
       dailyLimit: "5000.00", monthlyLimit: "50000.00",
-    });
+      });
+    }
 
-    if (input.openingDepositCents && input.openingDepositCents > 0) {
+    if (fictional && input.openingDepositCents && input.openingDepositCents > 0) {
       const suspense = await systemAccount(tx, "DEMO_FUNDING");
       await postTransaction(tx, {
         type: "DEPOSIT",
@@ -69,7 +75,11 @@ export async function openCustomer(input: {
       });
     }
     await tx.insert(schema.notifications).values({
-      userId: user.id, title: "Welcome to Citizen Bank", body: "Your current and savings accounts are open, and a virtual debit card is ready to use.",
+      userId: user.id,
+      title: fictional ? "Welcome to Citizen Bank" : "Your banking profile is ready",
+      body: fictional
+        ? "Your fictional current and savings accounts are ready to explore."
+        : "Your current and savings accounts are visible but dormant while Citizen Digital Ltd prepares its banking licence application. Complete your identity details; payments and card issuance are not available yet.",
     });
     return user;
   });

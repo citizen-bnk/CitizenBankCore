@@ -15,7 +15,8 @@ import { formatMoney, fromCents, toCents } from "./money";
 import { fxRate, SUPPORTED_COUNTRIES_CROSS_BORDER } from "./currency";
 
 import { requireKyc } from './kyc';
-import {bankingStatus} from './banking-status';
+import {bankingStatus,liveBankingStatus} from './banking-status';
+import {dataScope} from './execution-context';
 const S = schema;
 
 /* ------------------------------------------------------------------ config */
@@ -82,6 +83,7 @@ async function notify(tx: Tx, userId: string, title: string, body: string) {
 const ACCOUNT_ORDER: Record<string, number> = { CURRENT: 0, SAVINGS: 1, FIXED_DEPOSIT: 2, CRYPTO: 3, INTERNAL: 4 };
 
 export async function getOverview(userId: string) {
+  const currentStatus=dataScope()==='demo'&&process.env.DEMO_MODE==='true'?bankingStatus:liveBankingStatus;
   const [user] = await db.select().from(S.users).where(eq(S.users.id, userId)).limit(1);
   if (!user) throw notFound("user");
   const [accounts, cards, beneficiaries, billers, scheduled, loans, unread] = await Promise.all([
@@ -97,7 +99,7 @@ export async function getOverview(userId: string) {
   ]);
   const recent = await listTransactions(userId, { limit: 10 });
   return {
-    bankingStatus,
+    bankingStatus:currentStatus,
     energize: await energizeStatus(userId),
     user: {
       id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, phone: user.phone,
@@ -105,7 +107,7 @@ export async function getOverview(userId: string) {
     },
     accounts: accounts.sort((a, b) => ACCOUNT_ORDER[a.type] - ACCOUNT_ORDER[b.type]).map((a) => ({
       id: a.id, name: `${a.name} · Pre-licensing`, type: a.type, number: a.number, last4: a.number.slice(-4),
-      allowMixedCardForms:a.allowMixedCardForms,allowedCardForms:a.allowMixedCardForms?['VIRTUAL','PHYSICAL']:[...new Set(cards.filter(c=>c.accountId===a.id).map(c=>c.form))].length>1?[]:cards.some(c=>c.accountId===a.id)?[cards.find(c=>c.accountId===a.id)!.form]:['VIRTUAL','PHYSICAL'],currency: a.currency, balance: a.balance, status: a.status, phase:bankingStatus.phase,money:bankingStatus.money, interestRate: a.interestRate, maturesAt: a.maturesAt,
+      allowMixedCardForms:a.allowMixedCardForms,allowedCardForms:a.allowMixedCardForms?['VIRTUAL','PHYSICAL']:[...new Set(cards.filter(c=>c.accountId===a.id).map(c=>c.form))].length>1?[]:cards.some(c=>c.accountId===a.id)?[cards.find(c=>c.accountId===a.id)!.form]:['VIRTUAL','PHYSICAL'],currency: a.currency, balance: a.balance, status: a.status, phase:currentStatus.phase,money:currentStatus.money, interestRate: a.interestRate, maturesAt: a.maturesAt,
     })),
     cards: cards.map((c) => ({
       id: c.id, label: c.label, last4: c.last4, brand: c.brand, kind: c.kind, form: c.form, expiry: c.expiry,
@@ -431,6 +433,7 @@ function advance(d: Date, f: string) {
 
 /** Called by the daily Vercel cron. Each run is idempotent per (schedule, due date). */
 export async function runDueScheduledPayments(now = new Date()) {
+  if (dataScope() !== 'demo' || process.env.DEMO_MODE !== 'true') return [];
   const due = await db.select().from(S.scheduledPayments)
     .where(and(eq(S.scheduledPayments.active, true), lte(S.scheduledPayments.nextRunAt, now)));
   const results: { id: string; ok: boolean; error?: string }[] = [];

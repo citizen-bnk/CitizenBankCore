@@ -1,2 +1,2 @@
-import {bankingStatus} from '@/lib/banking-status';
-export function GET(){return Response.json(bankingStatus,{headers:{'Cache-Control':'no-store'}});}
+import {bankingStatus,liveBankingStatus} from '@/lib/banking-status';
+export function GET(){return Response.json(process.env.DEMO_MODE==='true'?bankingStatus:liveBankingStatus,{headers:{'Cache-Control':'no-store'}});}

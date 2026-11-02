@@ -1,2 +1,3 @@
 /** No connected real-money rails are released. Licensing cannot be enabled by a browser request. */
 export const bankingStatus={phase:'pre_licensing',label:'Pre-licensing',money:'fictional',realMoneyEnabled:false,notice:'Pre-licensing — fictional money only. No real deposits, payments or withdrawals.'} as const;
+export const liveBankingStatus={phase:'pre_licensing',label:'Pre-licensing',money:'unavailable',realMoneyEnabled:false,notice:'Your banking profile is available. Accounts remain dormant; deposits, payments, withdrawals and card issuance are unavailable pending licensing and operational approval.'} as const;
