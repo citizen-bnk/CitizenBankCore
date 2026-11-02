@@ -6,9 +6,11 @@ import { NextResponse, type NextRequest } from "next/server";
  * cross-site POST/PATCH/DELETE, so a missing Origin means a non-browser client.
  */
 export function middleware(req: NextRequest) {
-  if (process.env.NODE_ENV === "production" && process.env.DEMO_MODE !== "true" &&
-      !["/api/provider", "/api/health"].includes(req.nextUrl.pathname)) {
-    return NextResponse.json({
+  if (process.env.NODE_ENV === "production" && process.env.DEMO_MODE !== "true") {
+    if (!req.nextUrl.pathname.startsWith("/api/")) {
+      return NextResponse.redirect("https://citizenbank.co.ls", 307);
+    }
+    if (!["/api/provider", "/api/health"].includes(req.nextUrl.pathname)) return NextResponse.json({
       code: "LEGACY_BANKING_UNAVAILABLE",
       error: "This service handles CitizenAI provider requests only. Open Citizen Bank through the website or banking app.",
       recovery: "https://citizenbank.co.ls",
@@ -27,4 +29,4 @@ export function middleware(req: NextRequest) {
   return NextResponse.json({ error: "Request origin not allowed." }, { status: 403 });
 }
 
-export const config = { matcher: "/api/:path*" };
+export const config = { matcher: ["/api/:path*", "/((?!_next/|favicon.ico).*)"] };
