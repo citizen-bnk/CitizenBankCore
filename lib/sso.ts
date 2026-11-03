@@ -1,4 +1,4 @@
-import {readIdentityAuthority,effectiveBankRoles,credentialsWereRevoked} from './identity-authority';
+import {readIdentityAuthority,readLegacyHubIdentity,effectiveBankRoles,credentialsWereRevoked} from './identity-authority';
 /**
  * Single sign-on from the Citizen Bank website.
  *
@@ -112,10 +112,10 @@ const isUniqueViolation = (e: unknown) =>
 /** The Core user for this person, created on first visit. Never adopts a profile just because the email matches. */
 export async function userForHandoff(claims: HandoffClaims) {
   if ((claims.scope ?? "live") !== dataScope()) throw INVALID;
-  if (!claims.roles.includes("customer")) {
-    throw new BankError("SSO_NOT_CUSTOMER", "Your account does not include banking.", 403);
-  }
-  if(claims.issuedAt){const identity=await readIdentityAuthority(claims.personId);if(!identity||credentialsWereRevoked(identity,claims.issuedAt)||!effectiveBankRoles(['CUSTOMER'],identity,dataScope())?.includes('CUSTOMER'))throw new BankError('SSO_SESSION_REVOKED','Your Citizen access changed after this sign-in link was issued. Sign in again.',401);}
+  // A verified Citizen person may sign in here. Banking products are granted by
+  // onboarding and KYC, not by an investor, board or Hub membership claim.
+  const canonical=await readIdentityAuthority(claims.personId);
+  if(!canonical||!canonical.provider_subject||canonical.email.toLowerCase()!==claims.email||claims.issuedAt&&credentialsWereRevoked(canonical,claims.issuedAt)||!effectiveBankRoles(['CUSTOMER'],canonical,dataScope())?.includes('CUSTOMER'))throw new BankError('SSO_SESSION_REVOKED','Your Citizen access changed after this sign-in link was issued. Sign in again.',401);
   const byPerson = async () =>
     (await db.select().from(schema.users).where(eq(schema.users.personId, claims.personId)).limit(1))[0];
 
@@ -127,9 +127,11 @@ export async function userForHandoff(claims: HandoffClaims) {
     const [sameEmail] = await db.select().from(schema.users)
       .where(eq(schema.users.email, claims.email)).limit(1);
     if (sameEmail) {
-      // Demonstration databases are synthetic. Preserve their seeded account history when linking it
-      // to the verified canonical identity. Live profiles are never adopted by email alone.
-      if (dataScope() !== "demo" || sameEmail.personId !== null) {
+      // Link a Hub-era banking record only when both authorities prove the same
+      // Stack identity subject. Matching email alone never establishes ownership.
+      const legacy=sameEmail.personId&&dataScope()==='live'?await readLegacyHubIdentity(sameEmail.personId):null;
+      const verifiedLegacy=!!legacy&&legacy.provider_subject===canonical.provider_subject&&legacy.email.toLowerCase()===claims.email;
+      if (!verifiedLegacy && (dataScope() !== "demo" || sameEmail.personId !== null)) {
         throw new BankError("SSO_EMAIL_IN_USE",
           "A banking profile with this email already exists and has not been linked to your account. Please contact support.", 409);
       }
@@ -138,7 +140,7 @@ export async function userForHandoff(claims: HandoffClaims) {
         .where(and(
           eq(schema.users.id, sameEmail.id),
           eq(schema.users.email, claims.email),
-          isNull(schema.users.personId),
+          sameEmail.personId?eq(schema.users.personId,sameEmail.personId):isNull(schema.users.personId),
         ))
         .returning();
       user = linkedDemoUser ?? await byPerson();
@@ -154,6 +156,7 @@ export async function userForHandoff(claims: HandoffClaims) {
           ...(claims.phone ? { phone: claims.phone } : {}),
           password: randomBytes(32).toString("base64url"), // nobody knows it: this profile signs in through the website only
           openingDepositCents: dataScope() === "demo" ? DEMO_OPENING_DEPOSIT_CENTS : 0,
+          limited: dataScope() === "live",
         });
       } catch (e) {
         // Two first-time visits at once: the other one won, use its profile.
