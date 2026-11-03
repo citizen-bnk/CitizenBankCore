@@ -5,10 +5,22 @@ import { db,schema } from '@/db';
 import { getSession,setSessionCookie } from './auth';
 import { BankError } from './errors';
 import { rateLimit } from './rate-limit';
+import { SignJWT, jwtVerify } from 'jose';
+import { dataScope, scopeFromVerifiedClaim, withDataScope } from './execution-context';
 const COOKIE='cb_challenge';
+function challengeSecret() {
+  const secret = process.env.AUTH_SECRET;
+  if (!secret || secret.length < 32) throw new Error('Authentication is not configured');
+  return new TextEncoder().encode(secret);
+}
+async function readChallengeToken(token:string) {
+  const {payload}=await jwtVerify(token,challengeSecret(),{algorithms:['HS256']});
+  if(payload.use!=='challenge' || typeof payload.sub!=='string') throw new Error('Invalid ceremony');
+  return {id:payload.sub,scope:scopeFromVerifiedClaim(payload.data_scope)};
+}
 export function assertOrigin(req:Request) {
   const origin=req.headers.get('origin');
-  const allowed=(process.env.AUTH_ALLOWED_ORIGINS || 'https://citizenbankapp.vercel.app,https://citizeninternetbanking.vercel.app').split(',').map(x=>x.trim());
+  const allowed=(process.env.AUTH_ALLOWED_ORIGINS || 'https://app.citizenbank.co.ls,https://banking.citizenbank.co.ls').split(',').map(x=>x.trim());
   if(process.env.NODE_ENV!=='production') allowed.push('http://localhost:3000','http://localhost:3001');
   if(!origin || !allowed.includes(origin)) throw new BankError('BAD_ORIGIN','This sign-in origin is not allowed.',403);
   return origin;
@@ -16,18 +28,21 @@ export function assertOrigin(req:Request) {
 async function saveChallenge(challenge:string,purpose:string,origin:string,userId?:string) {
   // Expired challenges are bounded in storage; each browser retains just one active ceremony.
   const jar=await cookies(); const old=jar.get(COOKIE)?.value;
-  if(old) await db.delete(schema.authChallenges).where(eq(schema.authChallenges.id,old));
+  if(old) {try{const prior=await readChallengeToken(old);if(prior.scope===dataScope()) await db.delete(schema.authChallenges).where(eq(schema.authChallenges.id,prior.id));}catch{ /* Expired ceremonies cannot be reused. */ }}
   const [row]=await db.insert(schema.authChallenges).values({challenge,purpose,origin,userId,expiresAt:new Date(Date.now()+120_000)}).returning();
-  jar.set(COOKIE,row.id,{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'strict',path:'/',maxAge:120});
+  const token=await new SignJWT({use:'challenge',data_scope:dataScope()}).setProtectedHeader({alg:'HS256'}).setSubject(row.id).setIssuedAt().setExpirationTime('120s').sign(challengeSecret());
+  jar.set(COOKIE,token,{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'strict',path:'/',maxAge:120});
 }
 async function consumeChallenge(origin:string,purpose:string,userId?:string) {
-  const jar=await cookies(); const id=jar.get(COOKIE)?.value;jar.delete(COOKIE);
-  if(!id) throw new BankError('CHALLENGE_EXPIRED','Please start secure unlock again.',401);
+  const jar=await cookies(); const token=jar.get(COOKIE)?.value;jar.delete(COOKIE);
+  if(!token) throw new BankError('CHALLENGE_EXPIRED','Please start secure unlock again.',401);
+  let id:string;
+  try{const ceremony=await readChallengeToken(token);if(ceremony.scope!==dataScope()) throw new Error('Wrong context');id=ceremony.id;}catch{throw new BankError('CHALLENGE_EXPIRED','Please start secure unlock again.',401);}
   const [row]=await db.delete(schema.authChallenges).where(and(eq(schema.authChallenges.id,id),eq(schema.authChallenges.origin,origin),eq(schema.authChallenges.purpose,purpose),gt(schema.authChallenges.expiresAt,new Date()))).returning();
   if(!row || (purpose==='register' && row.userId!==userId)) throw new BankError('CHALLENGE_EXPIRED','Please start secure unlock again.',401);
   return row;
 }
-export async function passkeyOptions(req:Request,purpose:'login'|'register'|'reauth') {
+async function optionsInContext(req:Request,purpose:'login'|'register'|'reauth') {
   const origin=assertOrigin(req),rpID=new URL(origin).hostname;
   await rateLimit(req,'passkey-options');
   await db.execute(sql`DELETE FROM auth_challenges WHERE expires_at < now()`);
@@ -48,7 +63,7 @@ export async function passkeyOptions(req:Request,purpose:'login'|'register'|'rea
     authenticatorSelection:{residentKey:'required',userVerification:'required'}});
   await saveChallenge(options.challenge,purpose,origin,user.id);return options;
 }
-export async function verifyPasskey(req:Request,purpose:'login'|'register'|'reauth',response:RegistrationResponseJSON|AuthenticationResponseJSON) {
+async function verifyInContext(req:Request,purpose:'login'|'register'|'reauth',response:RegistrationResponseJSON|AuthenticationResponseJSON) {
   const origin=assertOrigin(req),rpID=new URL(origin).hostname;
   await rateLimit(req,'passkey-verify');
   const session=purpose==='register' ? await getSession() : null;
@@ -80,4 +95,19 @@ export async function verifyPasskey(req:Request,purpose:'login'|'register'|'reau
     await setSessionCookie({userId:user.id,roles:user.roles});
     return {ok:true};
   } catch {throw new BankError('PASSKEY_FAILED','Secure unlock was not completed. Please try again or use your password.',401);}
+}
+
+export async function passkeyOptions(req:Request,purpose:'login'|'register'|'reauth') {
+  assertOrigin(req);
+  const session=await getSession();
+  return withDataScope(session?.scope ?? 'live',()=>optionsInContext(req,purpose));
+}
+
+export async function verifyPasskey(req:Request,purpose:'login'|'register'|'reauth',response:RegistrationResponseJSON|AuthenticationResponseJSON) {
+  assertOrigin(req);
+  const token=(await cookies()).get(COOKIE)?.value;
+  if(!token) throw new BankError('CHALLENGE_EXPIRED','Please start secure unlock again.',401);
+  let ceremony:Awaited<ReturnType<typeof readChallengeToken>>;
+  try{ceremony=await readChallengeToken(token);}catch{throw new BankError('CHALLENGE_EXPIRED','Please start secure unlock again.',401);}
+  return withDataScope(ceremony.scope,()=>verifyInContext(req,purpose,response));
 }

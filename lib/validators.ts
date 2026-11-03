@@ -44,6 +44,7 @@ export const beneficiarySchema = z.object({
 export const cardStatusSchema = z.object({ action: z.enum(["freeze", "unfreeze", "block"]) });
 export const cardLimitSchema = z.object({ daily: amountCents.optional(), monthly: amountCents.optional() });
 export const orderCardSchema = z.object({
+  createCryptoAccount:z.boolean().optional(),
   kind: z.enum(["DEBIT", "CRYPTO"]),
   accountId: id.optional(),
   form: z.enum(["VIRTUAL", "PHYSICAL"]),

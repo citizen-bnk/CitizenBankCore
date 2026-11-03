@@ -50,7 +50,7 @@ export const adminInvites=pgTable('admin_invites',{
 });
 
 export const roleEnum = pgEnum("role", ["CUSTOMER", "BOARD_MEMBER", "BACK_OFFICE", "SUPER_ADMIN"]);
-export const accountTypeEnum = pgEnum("account_type", ["CURRENT", "SAVINGS", "FIXED_DEPOSIT", "INTERNAL"]);
+export const accountTypeEnum = pgEnum("account_type", ["CURRENT", "SAVINGS", "FIXED_DEPOSIT", "INTERNAL", "CRYPTO"]);
 export const accountStatusEnum = pgEnum("account_status", ["ACTIVE", "DORMANT", "CLOSED"]);
 export const txTypeEnum = pgEnum("tx_type", [
   "INTERNAL_TRANSFER", // between a customer's own accounts
@@ -98,6 +98,7 @@ export const ssoTokensUsed = pgTable("sso_tokens_used", {
 }, (t) => [index("sso_tokens_used_expires_idx").on(t.expiresAt)]);
 
 export const accounts = pgTable("accounts", {
+  allowMixedCardForms:boolean("allow_mixed_card_forms").notNull().default(false),
   id: id(),
   number: varchar("number", { length: 20 }).notNull().unique(),
   name: varchar("name", { length: 100 }).notNull(),
@@ -186,6 +187,7 @@ export const scheduledPayments = pgTable("scheduled_payments", {
 
 export const cards = pgTable("cards", {
   id: id(),
+  archivedAt: timestamp('archived_at', {withTimezone:true}),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   accountId: text("account_id").references(() => accounts.id),
   label: varchar("label", { length: 60 }).notNull(),

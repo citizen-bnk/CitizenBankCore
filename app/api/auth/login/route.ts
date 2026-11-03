@@ -7,6 +7,9 @@ import { loginSchema } from "@/lib/validators";
 
 import { assertOrigin } from '@/lib/passkey-auth';
 import { rateLimit } from '@/lib/rate-limit';
+import {usesSharedIdentity} from '@/lib/shared-sign-in';
+import {BankError} from '@/lib/errors';
+export const maxDuration=60;
 const MAX_ATTEMPTS = 5;
 const LOCK_MINUTES = 15;
 let dummyHash: Promise<string> | null = null;
@@ -17,6 +20,10 @@ export async function POST(req: Request) {
     assertOrigin(req);
     await rateLimit(req,'password-login',20);
     const { email, password } = await body(req, loginSchema);
+    const [existing]=await db.select().from(schema.users).where(eq(schema.users.email,email)).limit(1);
+    if(usesSharedIdentity(existing)){
+      throw new BankError('SHARED_SIGN_IN_REQUIRED','Sign in with your Citizen account on the website to continue to banking.',409);
+    }
     const result=await db.transaction(async tx=>{
     await tx.execute(sql`SELECT id FROM users WHERE email=${email} FOR UPDATE`);
     const [u] = await tx.select().from(schema.users).where(eq(schema.users.email, email)).limit(1);
