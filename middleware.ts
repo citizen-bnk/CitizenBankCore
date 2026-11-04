@@ -10,7 +10,7 @@ export function middleware(req: NextRequest) {
     if (!req.nextUrl.pathname.startsWith("/api/")) {
       return NextResponse.redirect("https://citizenbank.co.ls", 307);
     }
-    if (!["/api/provider", "/api/health"].includes(req.nextUrl.pathname)) return NextResponse.json({
+    if (!["/api/provider", "/api/health", "/api/internal/invitation-email"].includes(req.nextUrl.pathname)) return NextResponse.json({
       code: "LEGACY_BANKING_UNAVAILABLE",
       error: "This service handles CitizenAI provider requests only. Open Citizen Bank through the website or banking app.",
       recovery: "https://citizenbank.co.ls",
