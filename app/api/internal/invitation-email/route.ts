@@ -23,10 +23,15 @@ export async function POST(request: Request) {
   if (!data.success) return Response.json({ code: 'INVALID_EMAIL_REQUEST' }, { status: 422 });
   const key = process.env.RESEND_API_KEY;
   if (!key) return Response.json({ code: 'EMAIL_NOT_CONFIGURED' }, { status: 503 });
+  const deliveryKey = request.headers.get('x-citizen-email-key');
+  if (deliveryKey && !/^[a-zA-Z0-9:_-]{1,128}$/.test(deliveryKey)) {
+    return Response.json({ code: 'INVALID_DELIVERY_KEY' }, { status: 422 });
+  }
   try {
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST', signal: AbortSignal.timeout(12000),
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json',
+        ...(deliveryKey ? { 'Idempotency-Key': deliveryKey } : {}) },
       body: JSON.stringify({ ...data.data, to: [data.data.to], from: 'Citizen Bank Invitations <invitations@citizenbank.co.ls>', reply_to: 'admin@citizenbank.co.ls' }),
     });
     if (!response.ok) {
