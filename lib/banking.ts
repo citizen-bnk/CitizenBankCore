@@ -83,7 +83,7 @@ async function notify(tx: Tx, userId: string, title: string, body: string) {
 
 const ACCOUNT_ORDER: Record<string, number> = { CURRENT: 0, SAVINGS: 1, FIXED_DEPOSIT: 2, CRYPTO: 3, INTERNAL: 4 };
 
-export async function getOverview(userId: string) {
+export async function getOverview(userId: string,verifiedRoles?:string[]) {
   const approval=await testPermissions(userId);
   const currentStatus=(dataScope()==='demo'&&process.env.DEMO_MODE==='true')||approval.accounts||approval.cards||approval.energize?bankingStatus:liveBankingStatus;
   const [user] = await db.select().from(S.users).where(eq(S.users.id, userId)).limit(1);
@@ -105,7 +105,7 @@ export async function getOverview(userId: string) {
     energize: await energizeStatus(userId),
     user: {
       id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, phone: user.phone,
-      preferredLanguage: user.preferredLanguage, preferredTheme: user.preferredTheme, roles: user.roles,
+      preferredLanguage: user.preferredLanguage, preferredTheme: user.preferredTheme, roles: verifiedRoles??user.roles,
     },
     accounts: accounts.sort((a, b) => ACCOUNT_ORDER[a.type] - ACCOUNT_ORDER[b.type]).map((a) => ({
       id: a.id, name: `${a.name} · Pre-licensing`, type: a.type, number: a.number, last4: a.number.slice(-4),

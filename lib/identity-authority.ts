@@ -31,6 +31,10 @@ export async function readIdentityAuthority(personId:string,fetchImpl:typeof fet
 
 export function effectiveBankRoles(roles:readonly string[],identity:IdentityAuthority,scope:'live'|'demo'){
  if(identity.scope!==(scope==='demo'?'demonstration':'live'))return null;
- return [...roles];
+ const current:string[]=roles.includes('CUSTOMER')?['CUSTOMER']:[];
+ if(identity.roles.includes('super_admin'))current.push('SUPER_ADMIN');
+ if(identity.roles.some(role=>['admin','staff','back_office'].includes(role)))current.push('BACK_OFFICE');
+ if(identity.roles.includes('board_member'))current.push('BOARD_MEMBER');
+ return current;
 }
 export function credentialsWereRevoked(identity:IdentityAuthority,authenticatedAt:Date){return !!identity.credentials_revoked_before&&Date.parse(identity.credentials_revoked_before)>authenticatedAt.getTime();}
