@@ -14,8 +14,8 @@ async function funding(userId:string){
  const [user]=await db.select({personId:schema.users.personId}).from(schema.users).where(eq(schema.users.id,userId));
  if(!user)throw new BankError('UNAUTHENTICATED','Sign in again.',401);
  if(!user.personId)return energizeCredit(false,[]);
- const secret=process.env.PROFILE_SERVICE_SECRET,base=process.env.CITIZEN_HUB_URL||'https://hub.citizenbank.co.ls';
- if(!secret||!['https://hub.citizenbank.co.ls','https://citizen-hub-demo.vercel.app'].includes(base))throw new BankError('INVESTMENT_SOURCE_UNAVAILABLE','Your paid investment could not be checked. No fictional credit was added. Retry.',503);
+ const secret=process.env.PROFILE_SERVICE_SECRET,base=process.env.PLATFORM_WEBSITE_URL||'https://citizenbank.co.ls';
+ if(!secret||!['https://citizenbank.co.ls','https://citizen-website-demo.vercel.app'].includes(base))throw new BankError('INVESTMENT_SOURCE_UNAVAILABLE','Your paid investment could not be checked. No fictional credit was added. Retry.',503);
  let data:{person_id:string;scope:string;shareholder:boolean;contributions:{currency:string;amount:string}[]};
  try{
   const r=await fetch(base+'/api/platform/investment-funding',{headers:{'X-Citizen-Profile-Token':profileProof(user.personId,'GET','investment-funding',secret)},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(8000)});
