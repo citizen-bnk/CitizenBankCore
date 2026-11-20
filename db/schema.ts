@@ -24,7 +24,8 @@ export const kycProfiles = pgTable('kyc_profiles', {
   updatedAt: timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
 });
 export const kycEvents = pgTable('kyc_events', {
-  id: id(), userId: text('user_id').notNull().references(()=>users.id), actorId: text('actor_id').notNull().references(()=>users.id),
+  id: id(), userId: text('user_id').notNull().references(()=>users.id), actorId: text('actor_id').references(()=>users.id),
+  externalActorId: text('external_actor_id'),
   event: text('event').notNull(), details: jsonb('details').$type<Record<string,unknown>>().notNull(), createdAt: createdAt(),
 });
 export const passkeys = pgTable('passkeys', {

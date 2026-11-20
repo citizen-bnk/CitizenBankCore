@@ -26,6 +26,6 @@ test('fictional demo policy allows declared low-risk checks but enforces missing
  await db.update(schema.kycProfiles).set({verified:['contact','identity'],validUntil:new Date(Date.now()-1)}).where(eq(schema.kycProfiles.userId,id));
  await assert.rejects(()=>requireKyc(id,'cross_border',1),(e:any)=>e.code==='KYC_REQUIRED');
  process.env.DEMO_MODE='false';
- await assert.rejects(()=>requireKyc(id,'payment',1),(e:any)=>e.code==='POLICY_NOT_APPROVED');
+ await assert.rejects(()=>requireKyc(id,'payment',1),(e:any)=>e.code==='TEST_APPROVAL_REQUIRED');
 });
 after(async()=>{await db.delete(schema.kycEvents).where(eq(schema.kycEvents.userId,id));await db.delete(schema.kycProfiles).where(eq(schema.kycProfiles.userId,id));await db.delete(schema.beneficiaries).where(eq(schema.beneficiaries.userId,id));await db.delete(schema.users).where(eq(schema.users.id,id));await db.execute(sql`SELECT 1`);await (globalThis as any).__cbPool?.end();});

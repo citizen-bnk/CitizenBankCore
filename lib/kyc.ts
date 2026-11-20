@@ -5,6 +5,7 @@ import { db, schema, type Tx } from '@/db';
 import { BankError } from './errors';
 import { dataScope } from './execution-context';
 import { assess, DEMO_POLICY, type Activity, type Evidence } from './kyc-policy';
+import {testActivityAllowed} from './prelicensing-access';
 export { assess, DEMO_POLICY };
 export class KycRequired extends BankError {
   constructor(public assessment: ReturnType<typeof assess>) { super('KYC_REQUIRED', assessment.activity==='card'?'Complete your pre-licensing profile checks before adding a card. No card was created.':assessment.activity==='open_account'?'Complete your pre-licensing profile checks before opening an account.':'Complete your pre-licensing profile checks. No fictional payment was sent.', 403); }
@@ -15,10 +16,13 @@ export async function kycState(userId: string, tx: Tx | typeof db = db) {
 }
 export async function requireKyc(userId: string, activity: Activity, cents = 0, tx: Tx | typeof db = db) {
   // All released banking is fictional, including live-profile customers. No real-money policy is enabled.
-  if (!fictionalBankingAllowed(process.env.DEMO_MODE,bankingStatus)) throw new BankError('POLICY_NOT_APPROVED','Real-money activities are unavailable. This policy is for demonstration only.',403);
+  const approvedTest=await testActivityAllowed(userId,activity,tx);
+  if (!approvedTest&&!fictionalBankingAllowed(process.env.DEMO_MODE,bankingStatus)) throw new BankError('TEST_APPROVAL_REQUIRED','Ask the Super Admin to authorise pre-licensing testing for this activity. Real-money banking remains unavailable.',403);
   await tx.execute(sql`SELECT user_id FROM kyc_profiles WHERE user_id=${userId} FOR SHARE`);
   const [user] = await tx.select({suspended:schema.users.suspended,email:schema.users.email}).from(schema.users).where(eq(schema.users.id,userId));
   if (!user || user.suspended) throw new BankError('UNAUTHENTICATED','Please sign in again.',401);
+  // Explicit test approval never writes or upgrades verified KYC evidence.
+  if(approvedTest)return;
   const record = await kycState(userId,tx);
   // Simulation declarations enable fictional exercises only; persisted verification is never modified.
   const verified = [...new Set([...(record?.validUntil&&record.validUntil>new Date()?record.verified:[]),...declaredSimulationChecks(record?.declared||{},user.email)])];

@@ -4,8 +4,10 @@ import { db,schema } from '@/db';
 import { requireKyc } from '@/lib/kyc';
 import { assertOrigin } from '@/lib/passkey-auth';
 import { newAccountNumber } from '@/lib/onboarding';
+import {testActivityAllowed,openTestingAccounts} from '@/lib/prelicensing-access';
 export const POST=authed(async (req,s)=>{
   assertOrigin(req);
+  if(await testActivityAllowed(s.userId,'open_account'))return openTestingAccounts(s.userId);
   return db.transaction(async tx=>{
     await tx.execute(sql`SELECT id FROM users WHERE id=${s.userId} FOR UPDATE`);
     await requireKyc(s.userId,'open_account',0,tx);
