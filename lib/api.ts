@@ -1,3 +1,4 @@
+import {isDatabaseQuota,serviceMessage} from "./service-availability";
 import { NextResponse } from "next/server";
 import { ZodError, type ZodTypeAny, type z } from "zod";
 import { getSession, type Session } from "./auth";
@@ -37,6 +38,7 @@ export function authed<P = Record<string, string>>(
 }
 
 export function errorResponse(e: unknown) {
+  if (isDatabaseQuota(e)) return NextResponse.json({error:serviceMessage,code:"DATA_QUOTA_EXHAUSTED",recovery:"retry_later"},{status:503,headers:{"Retry-After":"3600","Cache-Control":"no-store"}});
   if (e instanceof KycRequired) return NextResponse.json({ error:e.message,code:e.code,kyc:e.assessment },{status:e.status});
   if (e instanceof BankError) return NextResponse.json({ error: e.message, code: e.code }, { status: e.status });
   if (e instanceof ZodError) {

@@ -1,3 +1,4 @@
+import {isServiceUnavailable,serviceMessage} from './service-availability';
 import {profileProof} from './profile-service';
 import {BankError} from './errors';
 
@@ -11,11 +12,11 @@ async function authorityAt(personId:string,base:string,allowed:string[],fetchImp
  try{
   const response=await fetchImpl(base+'/api/platform/profile-service',{headers:{'X-Citizen-Profile-Token':profileProof(personId,'GET','',secret)},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(8000)});
   if(response.status===404)return null;
-  if(!response.ok)throw Error('Authority unavailable');
+  if(!response.ok){const issue=await response.json().catch(()=>null);if(response.status===503 && isServiceUnavailable(issue))throw new BankError(issue.code||issue.issue,serviceMessage,503);throw Error('Authority unavailable');}
   const data=await response.json() as IdentityAuthority;
   if(data.linked!==true||data.person_id!==personId||!['live','demonstration'].includes(data.scope)||!Array.isArray(data.roles)||!data.roles.every(r=>typeof r==='string')||typeof data.email!=='string'||data.credentials_revoked_before!==null&&(!data.credentials_revoked_before||!Number.isFinite(Date.parse(data.credentials_revoked_before))))throw Error('Invalid authority response');
   return data;
- }catch{throw new BankError('IDENTITY_AUTHORITY_UNAVAILABLE','Current Citizen access could not be verified. Retry shortly; no banking activity was completed.',503);}
+ }catch(error){if(error instanceof BankError)throw error;throw new BankError('IDENTITY_AUTHORITY_UNAVAILABLE','Current Citizen access could not be verified. Retry shortly; no banking activity was completed.',503);}
 }
 
 /** Existing Hub-linked sessions remain valid only while their old person ID is still verified there. */
