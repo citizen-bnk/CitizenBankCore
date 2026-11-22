@@ -13,12 +13,12 @@ test('approved live identities can exercise fictional accounts and cards without
  process.env.PRELICENSING_TESTING_ENABLED='true';process.env.DEMO_MODE='false';
  const userId=randomUUID(),actor=randomUUID();
  try{
-  await db.insert(schema.users).values({id:userId,email:userId+'@test.invalid',passwordHash:'unused',firstName:'Synthetic',lastName:'Test'});
+  await db.insert(schema.users).values({id:userId,email:userId+'@test.invalid',passwordHash:'unused',firstName:'Synthetic',lastName:'Test',roles:['BOARD_MEMBER']});
   await assert.rejects(()=>openTestingAccounts(userId),(e:any)=>e.code==='TEST_APPROVAL_REQUIRED');
   assert.deepEqual(await testPermissions(userId),{accounts:false,cards:false,energize:false});
   await db.insert(schema.kycEvents).values({userId,externalActorId:actor,event:'pre_licensing_access_changed',details:{accounts:true,cards:true,energize:true,reason:'Synthetic local test',fictional:true}});
   await openTestingAccounts(userId,{actorId:actor,reason:'Synthetic local test'});await openTestingAccounts(userId);
-  const accounts=await db.select().from(schema.accounts).where(eq(schema.accounts.userId,userId));assert.equal(accounts.length,2);
+  const accounts=await db.select().from(schema.accounts).where(eq(schema.accounts.userId,userId));assert.equal(accounts.length,3);
   const current=accounts.find(a=>a.type==='CURRENT')!;
   await db.insert(schema.accounts).values({type:'INTERNAL',name:'Local test clearing',number:randomUUID().replace(/-/g,'').slice(0,10),systemCode:'CLEARING_LOCAL'}).onConflictDoNothing();
   await requireKyc(userId,'card');assert.equal(await kycState(userId),undefined);

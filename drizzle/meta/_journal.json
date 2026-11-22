@@ -50,6 +50,13 @@
       "when": 1795158000000,
       "tag": "0006_external_test_authority",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795338000000,
+      "tag": "0007_banking_email_outbox",
+      "breakpoints": true
     }
   ]
 }

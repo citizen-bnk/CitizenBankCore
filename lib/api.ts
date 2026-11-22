@@ -29,6 +29,7 @@ export function authed<P = Record<string, string>>(
         if(critical && Date.now()/1000-(session.authenticatedAt ?? 0)>300) throw new BankError('REAUTH_REQUIRED','Unlock securely again before confirming this activity.',403);
       }
       const out = await handler(req, session, ctx);
+      try{const {flushBankingEmails}=await import('./banking-email');await flushBankingEmails(2);}catch{/* Committed events remain queued for scheduled delivery. */}
       return out instanceof Response ? out : NextResponse.json(out ?? { ok: true });
       });
     } catch (e) {

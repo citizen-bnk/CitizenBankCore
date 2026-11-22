@@ -1,3 +1,5 @@
+import {ensureCustomerProducts} from './customer-products';
+import {queueBankingEmail} from './banking-email';
 import {compatibleCardAccount,cardFormAllowed} from './card-policy';
 import {newAccountNumber} from './onboarding';
 import {randomInt} from 'node:crypto';
@@ -84,6 +86,7 @@ async function notify(tx: Tx, userId: string, title: string, body: string) {
 const ACCOUNT_ORDER: Record<string, number> = { CURRENT: 0, SAVINGS: 1, FIXED_DEPOSIT: 2, CRYPTO: 3, INTERNAL: 4 };
 
 export async function getOverview(userId: string,verifiedRoles?:string[]) {
+  await ensureCustomerProducts(userId);
   const approval=await testPermissions(userId);
   const currentStatus=(dataScope()==='demo'&&process.env.DEMO_MODE==='true')||approval.accounts||approval.cards||approval.energize?bankingStatus:liveBankingStatus;
   const [user] = await db.select().from(S.users).where(eq(S.users.id, userId)).limit(1);
@@ -375,6 +378,7 @@ export async function orderCard(userId:string,p:{kind:'DEBIT'|'CRYPTO';accountId
   if(p.replacesCardId){const [old]=await tx.select().from(S.cards).where(and(eq(S.cards.id,p.replacesCardId),eq(S.cards.userId,userId),isNull(S.cards.archivedAt))).for('update');if(!old||old.accountId!==account.id||old.kind!==p.kind)throw new BankError('CARD_REPLACEMENT_MISMATCH','Replace a card on the same account and in the same category.',422);await tx.update(S.cards).set({status:'BLOCKED'}).where(eq(S.cards.id,old.id));}
   const exp=new Date();exp.setFullYear(exp.getFullYear()+4);const [card]=await tx.insert(S.cards).values({userId,accountId:account.id,label:account.name.replace(/ Account$/i,''),last4:String(randomInt(1000,10000)),brand:p.kind==='CRYPTO'?'CRYPTO':'VISA',kind:p.kind,form:p.form,expiry:String(exp.getMonth()+1).padStart(2,'0')+'/'+String(exp.getFullYear()).slice(2),status:p.form==='PHYSICAL'?'ORDERED':'ACTIVE',dailyLimit:'5000.00',monthlyLimit:'50000.00',deliveryAddress:p.form==='PHYSICAL'?p.deliveryAddress!.trim():null}).returning();
   if(audit)await tx.insert(S.kycEvents).values({userId,externalActorId:audit.actorId,event:'pre_licensing_admin_action',details:{action:'order_card',requestId:audit.requestId,cardId:card.id,reason:audit.reason,fictional:true}});
+  await queueBankingEmail(tx,userId,'card_created','card-created:'+card.id,{account:account.name,kind:p.kind,form:p.form,last4:card.last4,status:card.status});
   return card;
  });
 }
