@@ -2,9 +2,10 @@
  * Idempotent seed. Safe to run on every deploy (it is part of "vercel-build"):
  *  - always upserts bank system accounts, billers and branches;
  *  - creates demo customers + ~60 days of history only when no customers exist
- *    and SEED_DEMO_DATA is not "false".
+ *    in the isolated fictional database when SEED_DEMO_DATA is explicitly "true".
  */
 import { loadEnv } from "./env";
+import { dataScope, demoDatabaseUrl, withDataScope } from "../lib/execution-context";
 loadEnv();
 
 async function main() {
@@ -69,7 +70,8 @@ async function main() {
 
   /* ------------------------------------------------------ demo customers */
   const [{ n: userCount }] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.users);
-  if (userCount > 0 || process.env.SEED_DEMO_DATA === "false") {
+  if (userCount > 0 || dataScope() !== "demo" || process.env.SEED_DEMO_DATA !== "true") {
+    if(dataScope()==='demo'&&process.env.SEED_DEMO_DATA==='true')console.log('[seed] Missing fictional cards added:',await (await import('./card-seed')).ensureDemonstrationCards());
     console.log("[seed] Reference data up to date (demo customers skipped).");
     await (await import("./index")).db.$client.end();
     return;
@@ -163,10 +165,19 @@ async function main() {
   ]);
 
   console.log(`[seed] Demo customers created: palesa@demo.citizenbank.co.ls / thabo@demo.citizenbank.co.ls (password from DEMO_PASSWORD).`);
+  if(dataScope()==='demo')await (await import('./card-seed')).ensureDemonstrationCards();
   await db.$client.end();
 }
 
-main().catch((err) => {
+async function seedConfiguredDatabases() {
+  await withDataScope("live", main);
+  if (process.env.DEMO_MODE === "true") {
+    demoDatabaseUrl();
+    await withDataScope("demo", main);
+  }
+}
+
+seedConfiguredDatabases().catch((err) => {
   console.error("[seed] failed:", err);
   process.exit(1);
 });

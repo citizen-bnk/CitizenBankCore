@@ -11,7 +11,7 @@ export const GET = authed(async (req, s) => {
   const h = await headers();
   const qCountry = new URL(req.url).searchParams.get("country");
   const country = h.get("x-vercel-ip-country") || h.get("x-cb-country") || qCountry;
-  return { ...(await getOverview(s.userId)), locale: localeForCountry(country) };
+  return { ...(await getOverview(s.userId,s.roles)), locale: localeForCountry(country) };
 });
 
 export const PATCH = authed(async (req, s) => {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { authed, body } from "@/lib/api";
-import { resolveAIConfig } from "@/lib/ai-config";
+import {connectedAIConfig,providerFetch} from "@/lib/provider-connection";
 import { speechWithFailover } from "@/lib/speech-providers";
 import { rateLimit } from '@/lib/rate-limit';
 export const maxDuration = 30;
@@ -10,5 +10,5 @@ const schemaIn = z.object({ text: z.string().trim().min(1).max(4000),
 export const POST = authed(async (req,s) => {
   await rateLimit(req,'speech',30,300_000,s.userId);
   const { text, language_code } = await body(req, schemaIn);
-  return speechWithFailover(text, language_code, resolveAIConfig());
+  return speechWithFailover(text, language_code, await connectedAIConfig(),providerFetch);
 });

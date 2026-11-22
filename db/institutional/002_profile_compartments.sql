@@ -1,0 +1,4 @@
+ALTER TABLE hub_people ADD COLUMN IF NOT EXISTS street_address text NOT NULL DEFAULT '';
+ALTER TABLE hub_people ADD COLUMN IF NOT EXISTS city text NOT NULL DEFAULT '';
+ALTER TABLE hub_people ADD COLUMN IF NOT EXISTS employer text NOT NULL DEFAULT '';
+ALTER TABLE hub_people ADD COLUMN IF NOT EXISTS role_profiles jsonb NOT NULL DEFAULT '{}'::jsonb;

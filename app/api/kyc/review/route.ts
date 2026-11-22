@@ -9,7 +9,7 @@ const review=z.object({userId:z.string().min(6).max(40),decision:z.enum(['approv
  evidence:z.array(z.enum(['contact','identity','address','source_of_funds'])).max(4),reference:z.string().trim().min(4).max(150),submittedAt:z.string().datetime(),demoOnly:z.literal(true)}).strict();
 export const POST=authed(async (req,s)=>{
   assertOrigin(req);
-  if(process.env.DEMO_MODE!=='true' || !s.roles.some(r=>['BACK_OFFICE','SUPER_ADMIN'].includes(r))) throw new BankError('FORBIDDEN','Review access is required.',403);
+  if(process.env.DEMO_MODE!=='true' || s.scope!=='demo' || !s.roles.some(r=>['BACK_OFFICE','SUPER_ADMIN'].includes(r))) throw new BankError('FORBIDDEN','Review access is required.',403);
   if(Date.now()/1000-(s.authenticatedAt ?? 0)>300) throw new BankError('REAUTH_REQUIRED','Sign in again before reviewing checks.',401);
   const b=await body(req,review);
   if(b.userId===s.userId) throw new BankError('SELF_REVIEW','You cannot approve your own checks.',403);
@@ -28,6 +28,6 @@ export const POST=authed(async (req,s)=>{
   });return {ok:true,demoOnly:true};
 });
 export const GET=authed(async (_req,s)=>{
-  if(process.env.DEMO_MODE!=='true' || !s.roles.some(r=>['BACK_OFFICE','SUPER_ADMIN'].includes(r))) throw new BankError('FORBIDDEN','Review access is required.',403);
+  if(process.env.DEMO_MODE!=='true' || s.scope!=='demo' || !s.roles.some(r=>['BACK_OFFICE','SUPER_ADMIN'].includes(r))) throw new BankError('FORBIDDEN','Review access is required.',403);
   return {profiles:await db.select().from(schema.kycProfiles).where(eq(schema.kycProfiles.status,'pending')).limit(50),demoOnly:true};
 });

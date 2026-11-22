@@ -10,7 +10,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { resolveAIConfig } from "./ai-config";
+import {connectedAIConfig,providerDependencies} from "./provider-connection";
 import { answerWithFailover, FLOWS } from "./assistant-providers";
 import type { AssistantInput, AssistantReply } from "./assistant-providers";
 export { FLOWS } from "./assistant-providers";
@@ -137,5 +137,5 @@ export async function askAssistant(userId: string, input: AssistantInput): Promi
   const lang = input.language && LANG_NAME[input.language] ? input.language : user.preferredLanguage;
   return answerWithFailover({ input: { ...input, messages: history },
     system: systemPrompt(user.firstName, lang), tools,
-    runTool: (name, args) => runTool(userId, name, args) }, resolveAIConfig());
+    runTool: (name, args) => runTool(userId, name, args) }, await connectedAIConfig(),providerDependencies());
 }

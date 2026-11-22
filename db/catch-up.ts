@@ -5,6 +5,9 @@
  * Every migration in this repository must therefore be safe to run on a database that lacks only that one.
  */
 import { readMigrationFiles } from "drizzle-orm/migrator";
+import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {createHash} from 'node:crypto';
 import type { Pool } from "pg";
 
 export async function applyMissing(pool: Pick<Pool, "connect">, migrationsFolder: string): Promise<string[]> {
@@ -13,8 +16,15 @@ export async function applyMissing(pool: Pick<Pool, "connect">, migrationsFolder
   try {
     const { rows } = await client.query<{ hash: string }>('SELECT hash FROM "drizzle"."__drizzle_migrations"');
     const known = new Set(rows.map((r) => r.hash));
-    for (const m of readMigrationFiles({ migrationsFolder })) {
-      if (known.has(m.hash)) continue;
+    const journal=JSON.parse(readFileSync(join(migrationsFolder,'meta','_journal.json'),'utf8')) as {entries:{tag:string}[]};
+    const migrations=readMigrationFiles({ migrationsFolder });
+    for (const [index,m] of migrations.entries()) {
+      // Windows and Git builds can hash the same SQL with different line endings.
+      // Recognise only byte-identical SQL modulo CRLF; changed statements remain missing.
+      const source=readFileSync(join(migrationsFolder,journal.entries[index].tag+'.sql'),'utf8');
+      const lf=source.replace(/\r\n/g,'\n');
+      const aliases=[source,lf,lf.replace(/\n/g,'\r\n')].map(value=>createHash('sha256').update(value).digest('hex'));
+      if (known.has(m.hash)||aliases.some(hash=>known.has(hash))) continue;
       await client.query("BEGIN");
       try {
         for (const statement of m.sql) await client.query(statement);

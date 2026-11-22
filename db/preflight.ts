@@ -14,6 +14,12 @@ const dbSource = loadEnv();
 const onVercel = !!process.env.VERCEL;
 const errors: string[] = [];
 const warnings: string[] = [];
+if (onVercel && process.env.VERCEL_ENV === "production" && process.env.DEMO_MODE === "true") {
+  errors.push("DEMO_MODE must be false for the real-data production release.");
+}
+if (onVercel && process.env.VERCEL_ENV === "production" && process.env.SEED_DEMO_DATA === "true") {
+  errors.push("SEED_DEMO_DATA must be false for the real-data production release.");
+}
 
 const dbUrl = process.env.DATABASE_URL;
 if (!dbUrl) {
